@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   ignoreTests();
-  final store = CatalogStore.open('assets/data/catalog.db');
+  final store = CatalogStore.open('catalog.db');
   final c = store.data;
   final search = TitleSearch(c);
 
@@ -43,7 +43,7 @@ void main() {
 
 void ignoreTests() {
   test('ignored titles are excluded from the feed, give no taste signal and survive re-import', () {
-    final store = CatalogStore.open('assets/data/catalog.db');
+    final store = CatalogStore.open('catalog.db');
     final c = store.data;
     final rec = Recommender(c);
     final a = c.titles[0], b = c.titles[1];

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Build the bundled catalog asset (assets/data/catalog.db) from the slim server snapshot.
+"""Build the bundled catalog asset (catalog.db) from the slim server snapshot.
 
-  1. merge cache/slim_new.db (a slim export of the source profile DB) into cache/slim.db   (incremental)
+  1. merge cache/slim_new.db (output of fetch_snapshot.sh) into cache/slim.db   (incremental)
   2. embed embedding_text with BAAI/bge-small-en-v1.5 (fastembed/ONNX, CPU); cached by text hash
   3. write a compact SQLite catalog the Flutter app copies to its data dir on first run
 
@@ -21,7 +21,7 @@ import numpy as np
 
 HERE = Path(__file__).parent
 CACHE = HERE / "cache"
-OUT = HERE.parent / "assets" / "data" / "catalog.db"
+OUT = HERE.parent / "catalog.db"
 MODEL = "BAAI/bge-small-en-v1.5"
 EMB_DIM = 384
 SCHEMA_VERSION = 1

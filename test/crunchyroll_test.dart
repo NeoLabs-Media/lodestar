@@ -39,7 +39,7 @@ void main() {
     expect(series.length, 2);
     expect(series.firstWhere((s) => s.title == 'Mushishi').episodes, 2);
 
-    final store = CatalogStore.open('assets/data/catalog.db');
+    final store = CatalogStore.open('catalog.db');
     final res = parseCrunchyrollSeries(series, store.data, TitleSearch(store.data));
     expect(res.matched, 2);
     expect(res.hints.values.first, contains('episode'));

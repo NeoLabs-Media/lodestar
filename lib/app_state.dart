@@ -55,7 +55,7 @@ class AppState extends ChangeNotifier {
       if (kIsWeb) {
         users = UserStore.open('');
         catalogSource = 'bundled';
-        final bytes = await rootBundle.load('assets/data/catalog.db');
+        final bytes = await rootBundle.load('catalog.db');
         final opened = await CatalogStore.openBytes(bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes));
         _attach(opened);
         _loadControls();
@@ -97,11 +97,11 @@ class AppState extends ChangeNotifier {
   }
 
   Future<CatalogStore> _openBundled() async {
-    final version = (await rootBundle.loadString('assets/data/catalog.version')).trim();
+    final version = (await rootBundle.loadString('catalog.version')).trim();
     final dbFile = File(p.join(dir.path, 'catalog.db'));
     final verFile = File(p.join(dir.path, 'catalog.version'));
     if (!await dbFile.exists() || !await verFile.exists() || (await verFile.readAsString()).trim() != version) {
-      final bytes = await rootBundle.load('assets/data/catalog.db');
+      final bytes = await rootBundle.load('catalog.db');
       await dbFile.writeAsBytes(bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes), flush: true);
       await verFile.writeAsString(version);
     }

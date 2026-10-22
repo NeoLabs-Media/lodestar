@@ -38,7 +38,7 @@ void main() {
     final d = Directory.systemTemp.createTempSync('atlas_cat');
     final a = await fresh(d);
     a.rate(3, rating: 8);
-    final bundled = File('assets/data/catalog.db');
+    final bundled = File('catalog.db');
     var conditional = 0;
     final server = await HttpServer.bind('127.0.0.1', 0);
     String serving = 'good';

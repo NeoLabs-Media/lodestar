@@ -4,7 +4,7 @@ import 'package:lodestar/engine/recommender.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  final c = CatalogStore.open('assets/data/catalog.db').data;
+  final c = CatalogStore.open('catalog.db').data;
   final rec = Recommender(c);
 
   test('every category rule resolves to real facets and has titles', () {

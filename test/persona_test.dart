@@ -2,7 +2,7 @@
 // catalog's own dimensions/facets; we "watch and rate" 40 popular titles with it, ask the engine
 // for recommendations and measure how good (by the hidden utility) and how non-generic they are.
 //
-// Run:  flutter test test/persona_test.dart   (needs assets/data/catalog.db from tools/export.py)
+// Run:  flutter test test/persona_test.dart   (needs catalog.db from tools/export.py)
 import 'dart:math' as math;
 
 import 'package:lodestar/engine/catalog_data.dart';
@@ -93,7 +93,7 @@ void main() {
   late Recommender rec;
 
   setUpAll(() {
-    store = CatalogStore.open('assets/data/catalog.db');
+    store = CatalogStore.open('catalog.db');
     c = store.data;
     rec = Recommender(c);
   });

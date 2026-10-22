@@ -51,6 +51,11 @@ Web build (what the GitHub Pages workflow runs):
 flutter build web --release --pwa-strategy=none --base-href /lodestar/
 ```
 
+## Update the catalog
+
+Replace [`catalog.db`](catalog.db) in the repo root and push to `main`. CI checks that the file is valid
+(schema, titles, vocabulary), then rebuilds and redeploys the site. A bad file stops the deploy.
+
 ## Under the hood
 
 `lib/engine` is pure Dart and holds the whole recommender: taste vector, ridge model, hidden-gem term, MMR re-rank and the "why" text. `tools/export.py` builds the bundled `catalog.db` from a source profile database.

@@ -82,8 +82,8 @@ flutter:
         - asset: assets/fonts/Fraunces-Italic.ttf
           style: italic
   assets:
-    - assets/data/catalog.db
-    - assets/data/catalog.version
+    - catalog.db
+    - catalog.version
 
   # To add assets to your application, add an assets section, like this:
   # assets:
