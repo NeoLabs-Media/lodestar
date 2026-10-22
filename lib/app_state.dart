@@ -1,0 +1,516 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+
+import 'package:http/http.dart' as http;
+
+import 'data/backup.dart';
+import 'data/user_store.dart';
+import 'engine/catalog_data.dart';
+import 'engine/catalog_loader.dart';
+import 'engine/recommender.dart';
+import 'engine/search.dart';
+
+class AppState extends ChangeNotifier {
+  late CatalogStore store;
+  late CatalogData data;
+  late Recommender recommender;
+  late TitleSearch search;
+  late UserStore users;
+
+  bool ready = false;
+  String? error;
+
+  final Map<int, UserEntry> entries = {}; // by catalog idx
+  final Map<int, String> importHints = {}; // transient, shown in the rating tour
+  Controls controls = Controls();
+  TasteModel? model;
+  List<Rec> feed = [];
+  bool computing = false;
+  int _seq = 0;
+
+  /// Bumped on every shuffle so the same state doesn't give an identical feed after "refresh".
+  int feedEpoch = 0;
+  Timer? _debounce;
+
+  late Directory dir;
+  String catalogSource = 'bundled'; // bundled | file | url
+  String catalogUrl = '';
+  bool autoCheck = true;
+  bool catalogBusy = false;
+  double? downloadProgress;
+  String catalogStatus = '';
+  String backupError = '';
+  String lastAutoBackup = '';
+
+  File get _customFile => File(p.join(dir.path, 'catalog_custom.db'));  // native only
+
+  Future<void> init({String? supportDirOverride}) async {
+    try {
+      if (kIsWeb) {
+        users = UserStore.open('');
+        catalogSource = 'bundled';
+        final bytes = await rootBundle.load('assets/data/catalog.db');
+        final opened = await CatalogStore.openBytes(bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes));
+        _attach(opened);
+        _loadControls();
+        ready = true;
+        notifyListeners();
+        await refresh();
+        return;
+      }
+      dir = supportDirOverride != null ? Directory(supportDirOverride) : await getApplicationSupportDirectory();
+      await dir.create(recursive: true);
+      users = UserStore.open(p.join(dir.path, 'user.db'));
+      catalogSource = users.setting('catalog_source') ?? 'bundled';
+      catalogUrl = users.setting('catalog_url') ?? '';
+      autoCheck = (users.setting('catalog_autocheck') ?? '1') == '1';
+      CatalogStore? opened;
+      if (catalogSource != 'bundled' && await _customFile.exists()) {
+        try {
+          opened = CatalogStore.open(_customFile.path);
+        } catch (e) {
+          catalogStatus = 'Custom database could not be opened ($e) — using the bundled one.';
+          catalogSource = 'bundled';
+          users.setSetting('catalog_source', 'bundled');
+        }
+      } else {
+        catalogSource = 'bundled';
+      }
+      opened ??= await _openBundled();
+      _attach(opened);
+      _loadControls();
+      ready = true;
+      notifyListeners();
+      _dailyBackup();
+      if (catalogUrl.isNotEmpty && autoCheck) unawaited(checkForUpdate());
+      await refresh();
+    } catch (e, st) {
+      error = '$e\n$st';
+      notifyListeners();
+    }
+  }
+
+  Future<CatalogStore> _openBundled() async {
+    final version = (await rootBundle.loadString('assets/data/catalog.version')).trim();
+    final dbFile = File(p.join(dir.path, 'catalog.db'));
+    final verFile = File(p.join(dir.path, 'catalog.version'));
+    if (!await dbFile.exists() || !await verFile.exists() || (await verFile.readAsString()).trim() != version) {
+      final bytes = await rootBundle.load('assets/data/catalog.db');
+      await dbFile.writeAsBytes(bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes), flush: true);
+      await verFile.writeAsString(version);
+    }
+    return CatalogStore.open(dbFile.path);
+  }
+
+  /// Makes [s] the active catalog and re-links the user's entries to it (ids are stable).
+  void _attach(CatalogStore s) {
+    store = s;
+    data = s.data;
+    recommender = Recommender(data);
+    search = TitleSearch(data);
+    importHints.clear();
+    _reloadEntries();
+  }
+
+  void _reloadEntries() {
+    entries.clear();
+    for (final e in users.all()) {
+      final i = data.idToIdx[e.id];
+      if (i != null) entries[i] = e;
+    }
+  }
+
+  // --- catalog configuration ----------------------------------------------------
+  void _status(String s, {double? progress}) {
+    catalogStatus = s;
+    downloadProgress = progress;
+    notifyListeners();
+  }
+
+  /// Validates [candidate] (must be a catalog.db built by tools/export.py), then makes it the
+  /// active catalog. The user's data is untouched.
+  Future<void> _installCatalog(File candidate, String source) async {
+    final test = CatalogStore.open(candidate.path); // throws when it is not a valid catalog
+    final schema = int.tryParse(test.data.meta['schema'] ?? '') ?? 0;
+    final n = test.data.n;
+    test.close();
+    if (schema < 1 || schema > 1) throw FormatException('Unsupported catalog schema "$schema".');
+    if (n == 0) throw const FormatException('The catalog contains no titles.');
+    final old = store;
+    await candidate.rename(_customFile.path);
+    final fresh = CatalogStore.open(_customFile.path);
+    _attach(fresh);
+    if (!identical(old, fresh)) old.close();
+    catalogSource = source;
+    users.setSetting('catalog_source', source);
+    await refresh();
+  }
+
+  Future<void> useCatalogFile(File picked) async {
+    if (kIsWeb) return;
+    catalogBusy = true;
+    _status('Checking the file…');
+    try {
+      final tmp = File(p.join(dir.path, 'catalog_incoming.db'));
+      await _copyMaybeGzip(picked, tmp);
+      await _installCatalog(tmp, 'file');
+      _status('Now using ${picked.uri.pathSegments.last}: ${data.n} titles, built ${data.meta['built_at']}.');
+    } catch (e) {
+      _status('That file was not accepted: $e');
+    } finally {
+      catalogBusy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _copyMaybeGzip(File from, File to) async {
+    final head = await from.openRead(0, 2).fold<List<int>>([], (a, b) => a..addAll(b));
+    if (head.length == 2 && head[0] == 0x1f && head[1] == 0x8b) {
+      await from.openRead().transform(gzip.decoder).pipe(to.openWrite());
+    } else {
+      await from.copy(to.path);
+    }
+  }
+
+  void setCatalogUrl(String url, {bool? auto}) {
+    catalogUrl = url.trim();
+    if (auto != null) autoCheck = auto;
+    users.setSetting('catalog_url', catalogUrl);
+    users.setSetting('catalog_autocheck', autoCheck ? '1' : '0');
+    users.setSetting('catalog_etag', '');
+    users.setSetting('catalog_lastmod', '');
+    users.setSetting('catalog_len', '');
+    notifyListeners();
+  }
+
+  /// Fetches [catalogUrl]; downloads only when the server says it changed (ETag / Last-Modified /
+  /// size). [force] always downloads.
+  Future<void> checkForUpdate({bool force = false}) async {
+    if (kIsWeb || catalogUrl.isEmpty || catalogBusy) return;
+    final uri = Uri.tryParse(catalogUrl);
+    if (uri == null || !(uri.scheme == 'http' || uri.scheme == 'https')) {
+      _status('The address must start with http:// or https://');
+      return;
+    }
+    catalogBusy = true;
+    _status('Checking for a new database…');
+    final client = http.Client();
+    try {
+      final req = http.Request('GET', uri);
+      final etag = users.setting('catalog_etag') ?? '', lastmod = users.setting('catalog_lastmod') ?? '';
+      if (!force) {
+        if (etag.isNotEmpty) req.headers['If-None-Match'] = etag;
+        if (lastmod.isNotEmpty) req.headers['If-Modified-Since'] = lastmod;
+      }
+      final resp = await client.send(req).timeout(const Duration(seconds: 30));
+      users.setSetting('catalog_checked', DateTime.now().toIso8601String());
+      if (resp.statusCode == 304) {
+        _status('Database is up to date (checked just now).');
+        return;
+      }
+      if (resp.statusCode != 200) {
+        _status('The server answered HTTP ${resp.statusCode}.');
+        return;
+      }
+      final len = resp.contentLength;
+      final newEtag = resp.headers['etag'] ?? '', newMod = resp.headers['last-modified'] ?? '';
+      if (!force && newEtag.isEmpty && newMod.isEmpty && len != null && '$len' == (users.setting('catalog_len') ?? '')) {
+        await resp.stream.listen(null).cancel();
+        _status('Database is up to date (same size as the installed one).');
+        return;
+      }
+      final raw = File(p.join(dir.path, 'catalog_download.tmp'));
+      final sink = raw.openWrite();
+      var got = 0;
+      await for (final chunk in resp.stream) {
+        sink.add(chunk);
+        got += chunk.length;
+        _status('Downloading… ${(got / 1e6).toStringAsFixed(1)} MB', progress: len == null || len == 0 ? null : got / len);
+      }
+      await sink.close();
+      final tmp = File(p.join(dir.path, 'catalog_incoming.db'));
+      await _copyMaybeGzip(raw, tmp);
+      await raw.delete();
+      await _installCatalog(tmp, 'url');
+      users.setSetting('catalog_etag', newEtag);
+      users.setSetting('catalog_lastmod', newMod);
+      users.setSetting('catalog_len', len == null ? '' : '$len');
+      _status('Updated: ${data.n} titles, built ${data.meta['built_at']}.');
+    } catch (e) {
+      _status('Could not update: $e');
+    } finally {
+      client.close();
+      catalogBusy = false;
+      downloadProgress = null;
+      notifyListeners();
+    }
+  }
+
+  Future<void> resetCatalog() async {
+    if (kIsWeb) return;
+    catalogBusy = true;
+    _status('Switching back to the bundled database…');
+    try {
+      final old = store;
+      final fresh = await _openBundled();
+      _attach(fresh);
+      old.close();
+      if (await _customFile.exists()) await _customFile.delete();
+      catalogSource = 'bundled';
+      users.setSetting('catalog_source', 'bundled');
+      setCatalogUrl('');
+      await refresh();
+      _status('Using the bundled database: ${data.n} titles, built ${data.meta['built_at']}.');
+    } catch (e) {
+      _status('Could not reset: $e');
+    } finally {
+      catalogBusy = false;
+      notifyListeners();
+    }
+  }
+
+  String? get lastChecked => users.setting('catalog_checked');
+
+  // --- backup -------------------------------------------------------------------
+  String exportBackup() => buildBackup(users.all(), data, settings: {'obscurity': controls.obscurity.toStringAsFixed(3)});
+
+  /// Restores a backup file's content. [replace] wipes the current library first.
+  RestoreResult restoreBackup(String json, {required bool replace}) {
+    final res = parseBackup(json, data, search);
+    if (replace) users.clear();
+    users.putAll(res.entries);
+    final ob = double.tryParse(res.settings['obscurity'] ?? '');
+    if (ob != null) {
+      controls.obscurity = ob;
+      users.setSetting('obscurity', ob.toStringAsFixed(3));
+    }
+    _reloadEntries();
+    _changed();
+    return res;
+  }
+
+  Directory get backupDir => kIsWeb ? Directory('') : Directory(p.join(dir.path, 'backups'));
+
+  /// One rolling backup per day (last 14 kept) so a mistake never loses a library.
+  void _dailyBackup() {
+    if (kIsWeb) return;
+    try {
+      if (users.all().isEmpty) return;
+      backupDir.createSync(recursive: true);
+      final day = DateTime.now().toIso8601String().substring(0, 10);
+      final f = File(p.join(backupDir.path, 'auto-backup-$day.json'));
+      if (!f.existsSync()) f.writeAsStringSync(exportBackup());
+      lastAutoBackup = day;
+      final all = backupDir.listSync().whereType<File>().where((x) => x.path.contains('auto-backup-')).toList()
+        ..sort((a, b) => a.path.compareTo(b.path));
+      for (final old in all.take(all.length > 14 ? all.length - 14 : 0)) {
+        old.deleteSync();
+      }
+    } catch (e) {
+      backupError = '$e';
+    }
+  }
+
+  // --- views over entries ---
+  List<MapEntry<int, UserEntry>> byStatus(EntryStatus s) {
+    final l = entries.entries.where((e) => e.value.status == s).toList()
+      ..sort((a, b) => b.value.updatedAt.compareTo(a.value.updatedAt));
+    return l;
+  }
+
+  UserEntry? entryOf(int idx) => entries[idx];
+  int get watchedCount => entries.values.where((e) => e.status == EntryStatus.watched).length;
+  int get ratedCount =>
+      entries.values.where((e) => e.status == EntryStatus.watched && e.rating != null).length;
+
+  // --- mutations ---
+  void rate(int idx,
+      {double? rating, Set<String> reasons = const {}, String note = '', bool recompute = true}) {
+    final e = UserEntry(
+      id: data.titles[idx].id,
+      status: EntryStatus.watched,
+      rating: rating,
+      reasons: reasons,
+      note: note,
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    entries[idx] = e;
+    users.put(e);
+    if (recompute) {
+      _changed();
+    } else {
+      notifyListeners();
+    }
+  }
+
+  /// Watched titles still without a rating (e.g. after an import), most popular first.
+  List<int> unratedWatched() {
+    final l = [
+      for (final e in entries.entries)
+        if (e.value.status == EntryStatus.watched && e.value.rating == null) e.key
+    ]..sort((a, b) => data.titles[b].popularity.compareTo(data.titles[a].popularity));
+    return l;
+  }
+
+  void removeQuiet(int idx) {
+    entries.remove(idx);
+    users.remove(data.titles[idx].id);
+    notifyListeners();
+  }
+
+  void recomputeNow() => _changed();
+
+  void setStatus(int idx, EntryStatus s) {
+    final old = entries[idx];
+    final e = UserEntry(
+      id: data.titles[idx].id,
+      status: s,
+      rating: s == EntryStatus.watched ? old?.rating : null,
+      reasons: s == EntryStatus.watched ? (old?.reasons ?? {}) : {},
+      note: old?.note ?? '',
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    entries[idx] = e;
+    users.put(e);
+    _changed();
+  }
+
+  void remove(int idx) {
+    entries.remove(idx);
+    users.remove(data.titles[idx].id);
+    _changed();
+  }
+
+  /// Bulk add (imports): no refresh storm, one recompute at the end.
+  void addMany(List<UserEntry> list) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final toSave = <UserEntry>[];
+    for (final e in list) {
+      final i = data.idToIdx[e.id];
+      if (i == null) continue;
+      final old = entries[i];
+      if (old != null && old.status == EntryStatus.ignored) continue; // ignored stays ignored on re-import
+      if (old != null && old.status == EntryStatus.watched && e.status == EntryStatus.watched && old.rating != null && e.rating == null) {
+        continue; // never overwrite a real rating with "unrated"
+      }
+      final ne = UserEntry(id: e.id, status: e.status, rating: e.rating, reasons: e.reasons, note: e.note, updatedAt: now);
+      entries[i] = ne;
+      toSave.add(ne);
+    }
+    users.putAll(toSave);
+    _changed();
+  }
+
+  void setControls(Controls c, {bool persist = true}) {
+    controls = c;
+    if (persist) saveControls();
+    _changed(debounced: true);
+  }
+
+  /// Filters survive restarts (stored as JSON in the settings table).
+  void saveControls() {
+    final c = controls;
+    users.setSetting(
+        'filters',
+        jsonEncode({
+          'obscurity': c.obscurity,
+          'formats': c.formats.toList(),
+          'maxEpisodes': c.maxEpisodes,
+          'moods': c.moods.toList(),
+          'excludeWarnings': c.excludeWarnings.toList(),
+          'categories': c.categories.toList(),
+          'minYear': c.minYear,
+        }));
+    users.setSetting('obscurity', c.obscurity.toStringAsFixed(3));
+  }
+
+  void _loadControls() {
+    final saved = users.setting('obscurity');
+    if (saved != null) controls.obscurity = double.tryParse(saved) ?? controls.obscurity;
+    final raw = users.setting('filters');
+    if (raw == null) return;
+    try {
+      final m = jsonDecode(raw) as Map;
+      controls = Controls(
+        obscurity: (m['obscurity'] as num?)?.toDouble() ?? controls.obscurity,
+        formats: ((m['formats'] as List?) ?? const []).cast<String>().toSet(),
+        maxEpisodes: m['maxEpisodes'] as int?,
+        moods: ((m['moods'] as List?) ?? const []).cast<String>().toSet(),
+        excludeWarnings: ((m['excludeWarnings'] as List?) ?? const []).cast<String>().toSet(),
+        categories: ((m['categories'] as List?) ?? const []).cast<String>().toSet(),
+        minYear: m['minYear'] as int?,
+      );
+    } catch (_) {}
+  }
+
+  int get activeFilterCount =>
+      controls.formats.length +
+      controls.categories.length +
+      controls.moods.length +
+      controls.excludeWarnings.length +
+      (controls.maxEpisodes != null ? 1 : 0) +
+      (controls.minYear != null ? 1 : 0);
+
+  void _changed({bool debounced = false}) {
+    notifyListeners();
+    _debounce?.cancel();
+    if (debounced) {
+      _debounce = Timer(const Duration(milliseconds: 250), refresh);
+    } else {
+      refresh();
+    }
+  }
+
+  Future<void> refresh({bool reshuffle = false}) async {
+    if (!ready) return;
+    final seq = ++_seq;
+    computing = true;
+    notifyListeners();
+    await Future<void>.delayed(const Duration(milliseconds: 16)); // let the UI paint first
+    model = recommender.fit([for (final e in entries.values) e]);
+    final result = recommender.recommend(model!, controls, count: 60);
+    if (seq != _seq) return;
+    feed = result;
+    computing = false;
+    notifyListeners();
+  }
+
+  TasteSummary summary() => recommender.summarize(model ?? recommender.fit(entries.values.toList()));
+
+  Rec? surprise() {
+    final m = model;
+    if (m == null) return null;
+    return recommender.surprise(m, controls, seed: DateTime.now().microsecondsSinceEpoch);
+  }
+
+  Rec? explainFor(int idx) {
+    final m = model;
+    if (m == null) return null;
+    final (why, anchor, tags) = recommender.explain(idx, m);
+    return Rec(idx, 0, 0, why, anchor, false, tags);
+  }
+
+  /// Detail JSON for the detail screen.
+  Map<String, dynamic> detail(int idx) => store.detail(idx);
+
+  String get catalogInfo =>
+      '${data.n} titles · built ${data.meta['built_at']} · ${data.meta['model']}';
+
+  /// Export of the user's data (for backup).
+  String exportJson() => jsonEncode([
+        for (final e in entries.values)
+          {
+            'id': e.id,
+            'status': e.status.name,
+            'rating': e.rating,
+            'reasons': e.reasons.toList(),
+            'note': e.note,
+          }
+      ]);
+}

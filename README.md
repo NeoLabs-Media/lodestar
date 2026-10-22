@@ -1,0 +1,58 @@
+<div align="center">
+
+# ✦ Lodestar
+
+**Tell it what you've watched. It finds what to watch next, including the gems nobody recommends.**
+
+[**Open the web app →**](https://neolabs-media.github.io/lodestar/) · macOS · iOS · Web
+
+<sub>Anime today. Movies and series next.</sub>
+
+</div>
+
+---
+
+## Why you'll like it
+
+| | |
+|---|---|
+| **It asks *why*** | Rate a title, then tap what worked: *slow-burn romance*, *bittersweet ending*, *found family*… those taps steer your feed. |
+| **Hidden gems on a dial** | One switch takes you from popular picks to deep cuts. Every card explains itself: "like *Your Lie in April*, which you rated 9.5". |
+| **Private by design** | No account, no server, no tracking, no AI calls. Your ratings live on your device (or in your browser). |
+
+## How it works
+
+1. **Add what you've seen**: search, paste a list, or import a file.
+2. **Rate and say why**: a few seconds per title.
+3. **Get a feed of unwatched picks**: filter by category, format, mood or length.
+4. **Check your taste profile**: a plain-language summary that updates as you rate.
+
+## The catalog
+
+Every title carries a hand-built *deep profile*, not just tags:
+
+- **45 scored dimensions** (slow-burn, tragedy, moral ambiguity, pacing…) plus ~900 themes, moods and archetypes
+- **Characters, relationships, spoiler-free pitch, ending type** and a 384-d text embedding
+- **8,500+ titles shipped today**, 15,000+ profiled and counting
+
+> **The flex:** profiling the catalog took ~**480 million tokens**. At premium API rates that's a small-car invoice, call it **$15k and then some**. We ran it on our own hardware instead. No neural network was harmed in the making of this recommender: it's embeddings, ridge regression and a diversity re-rank, all running locally.
+
+## Run it
+
+```bash
+flutter pub get
+flutter run -d macos        # or: -d chrome · ios
+flutter test                # engine tests: personas, leave-one-out, search, categories
+```
+
+Web build (what the GitHub Pages workflow runs):
+
+```bash
+flutter build web --release --pwa-strategy=none --base-href /lodestar/
+```
+
+## Under the hood
+
+`lib/engine` is pure Dart and holds the whole recommender: taste vector, ridge model, hidden-gem term, MMR re-rank and the "why" text. `tools/export.py` builds the bundled `catalog.db` from a source profile database.
+
+<sub>Metadata courtesy of AniList, Kitsu and Wikipedia; covers load from their original hosts.</sub>
