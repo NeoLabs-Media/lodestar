@@ -10,6 +10,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 
 import 'data/backup.dart';
+import 'data/crunchyroll.dart';
+import 'platform/web_bridge.dart';
 import 'data/user_store.dart';
 import 'engine/catalog_data.dart';
 import 'engine/catalog_loader.dart';
@@ -27,6 +29,7 @@ class AppState extends ChangeNotifier {
   String? error;
 
   final Map<int, UserEntry> entries = {}; // by catalog idx
+  List<CrSeries>? pendingCrSeries; // from the web bookmarklet, awaiting the user's OK
   final Map<int, String> importHints = {}; // transient, shown in the rating tour
   Controls controls = Controls();
   TasteModel? model;
@@ -59,6 +62,10 @@ class AppState extends ChangeNotifier {
         final opened = await CatalogStore.openBytes(bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes));
         _attach(opened);
         _loadControls();
+        try {
+          final pending = takePendingImport();
+          if (pending != null) pendingCrSeries = parseBookmarkletPayload(pending);
+        } catch (_) {}
         ready = true;
         notifyListeners();
         await refresh();

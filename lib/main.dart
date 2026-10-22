@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import 'app_state.dart';
 import 'platform/splash.dart';
+import 'ui/crunchyroll_page.dart';
 import 'ui/feed_page.dart';
 import 'ui/library_page.dart';
 import 'ui/settings_page.dart';
@@ -41,6 +42,7 @@ class Home extends StatefulWidget {
 
 class _HomeState extends State<Home> {
   int tab = 0;
+  bool _askedPending = false;
 
   @override
   Widget build(BuildContext context) {
@@ -58,6 +60,28 @@ class _HomeState extends State<Home> {
           ]),
         ),
       );
+    }
+    if (!_askedPending && app.pendingCrSeries != null) {
+      _askedPending = true;
+      final series = app.pendingCrSeries!;
+      app.pendingCrSeries = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        final ok = await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Import from Crunchyroll?'),
+            content: Text('Your bookmark found ${series.length} series in your Crunchyroll history. '
+                'Add them as watched and rate them one by one?'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Not now')),
+              FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Import')),
+            ],
+          ),
+        );
+        // ignore: use_build_context_synchronously
+        if (ok == true && mounted) await importCrunchyrollSeries(context, app, series);
+      });
     }
     final pages = [
       FeedPage(onGoLibrary: () => setState(() => tab = 1)),

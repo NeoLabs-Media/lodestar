@@ -99,3 +99,19 @@ class CrunchyrollClient {
     return '${h(1)}${h(2)}-${h(3)}-4${h(4).substring(1)}-a${h(5).substring(1)}-${h(6)}${h(7)}${h(8)}';
   }
 }
+
+/// Decodes the payload from the web bookmarklet: base64url(JSON [{t: title, n: episodes, l: lastWatched}]).
+List<CrSeries> parseBookmarkletPayload(String b64url) {
+  var b = b64url.replaceAll('-', '+').replaceAll('_', '/');
+  while (b.length % 4 != 0) {
+    b += '=';
+  }
+  final list = jsonDecode(utf8.decode(base64.decode(b))) as List;
+  return [
+    for (final e in list.cast<Map>())
+      if ('${e['t'] ?? ''}'.trim().isNotEmpty)
+        (CrSeries('${e['t']}', '${e['t']}'.trim())
+          ..episodes = (e['n'] as num?)?.toInt() ?? 1
+          ..lastWatched = (e['l'] as String?)?.isEmpty == true ? null : e['l'] as String?)
+  ];
+}

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lodestar · Crunchyroll import</title>
+<style>
+  :root{color-scheme:dark}
+  body{margin:0;background:#0D0D0C;color:#ECE7DC;font:400 16px/1.55 Inter,system-ui,sans-serif}
+  main{max-width:640px;margin:0 auto;padding:64px 24px}
+  .k{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:#8F8A7E;font-weight:500}
+  h1{font:400 44px/1.05 Georgia,serif;letter-spacing:-.02em;margin:10px 0 8px;color:#F3EEE3}
+  p{color:#A9A395;margin:0 0 28px}
+  ol{list-style:none;padding:0;margin:0;counter-reset:s}
+  li{counter-increment:s;display:flex;gap:18px;padding:22px 0;border-top:1px solid rgba(236,231,220,.1)}
+  li:before{content:counter(s,decimal-leading-zero);font-size:11px;letter-spacing:.2em;color:#6F6B61;padding-top:5px}
+  li b{display:block;color:#F3EEE3;font-weight:500;margin-bottom:4px}
+  .bm{display:inline-block;margin:10px 0 4px;padding:12px 22px;border-radius:999px;background:#E3B65B;color:#0D0D0C;font-weight:600;text-decoration:none;cursor:grab}
+  button{font:inherit;padding:8px 16px;border-radius:999px;border:1px solid rgba(236,231,220,.25);background:transparent;color:#ECE7DC;cursor:pointer}
+  small{display:block;margin-top:34px;color:#6F6B61;font-size:13px}
+  a.back{color:#E3B65B}
+</style>
+</head>
+<body>
+<main>
+  <div class="k">Crunchyroll import</div>
+  <h1>Bring your watch history</h1>
+  <p>No password, no extension. A bookmark reads your history inside your own Crunchyroll tab and hands the titles to Lodestar.</p>
+  <ol>
+    <li><div><b>Drag this button to your bookmarks bar</b>
+      <a id="bm" class="bm" href="#">✦ Lodestar import</a><br>
+      <button id="copy" type="button">Can't drag? Copy the bookmark code</button></div></li>
+    <li><div><b>Open crunchyroll.com and sign in</b>Use your normal account, in a regular tab.</div></li>
+    <li><div><b>Click the bookmark</b>Lodestar opens with your titles, ready to rate one by one.</div></li>
+  </ol>
+  <small>Everything runs in your browser. The title list travels in the link's # part, which is never sent to any server. <a class="back" href="./">Back to Lodestar</a></small>
+</main>
+<script>
+function bookmarklet(app) {
+  var code = "(" + function (APP) {
+    var ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;z-index:2147483647;top:16px;right:16px;padding:14px 18px;background:#0D0D0C;color:#ECE7DC;font:500 14px system-ui;border:1px solid #E3B65B;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.5)';
+    document.body.appendChild(ov);
+    var say = function (t) { ov.textContent = '✦ Lodestar: ' + t; };
+    // open the target tab right away, while the click still counts as a user gesture (popup blockers)
+    var w = null;
+    try { w = window.open('about:blank', '_blank'); if (w) w.document.write('<body style="background:#0D0D0C;color:#ECE7DC;font:15px system-ui;padding:40px">✦ Lodestar is reading your Crunchyroll history…'); } catch (e) {}
+    (async function () {
+      try {
+        say('signing in…');
+        var tr = await fetch('/auth/v1/token', {
+          method: 'POST', credentials: 'include',
+          headers: { 'Authorization': 'Basic ' + btoa('noaihdevm_6iyg0a8l0q:'), 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ grant_type: 'etp_rt_cookie', scope: 'offline_access', device_id: crypto.randomUUID(), device_name: 'Chrome', device_type: 'web' })
+        });
+        if (!tr.ok) throw new Error('please sign in to Crunchyroll first (' + tr.status + ')');
+        var H = { Authorization: 'Bearer ' + (await tr.json()).access_token };
+        var me = await (await fetch('/accounts/v1/me', { headers: H })).json();
+        var url = '/content/v2/' + me.account_id + '/watch-history?page_size=100&locale=en-US';
+        var S = {}, eps = 0, guard = 0;
+        while (url && guard++ < 500) {
+          var r = await fetch(url, { headers: H });
+          if (!r.ok) { if (eps) break; throw new Error('history request failed (' + r.status + ')'); }
+          var b = await r.json();
+          (b.data || []).forEach(function (it) {
+            var p = it.panel || {}, m = p.episode_metadata || {}, t = (m.series_title || p.title || '').trim();
+            if (!t) return;
+            var id = m.series_id || p.id || t, s = S[id] || (S[id] = { t: t, n: 0, l: '' });
+            s.n++; var d = it.date_played || ''; if (d > s.l) s.l = d; eps++;
+          });
+          say('reading history… ' + eps + ' episodes, ' + Object.keys(S).length + ' series');
+          var nx = (b.meta || {}).next_page;
+          url = (b.data && b.data.length && nx) ? nx.replace(/^https?:\/\/[^\/]+/, '') : '';
+        }
+        var list = Object.keys(S).map(function (k) { return S[k]; });
+        if (!list.length) throw new Error('your history is empty');
+        var bytes = new TextEncoder().encode(JSON.stringify(list)), bin = '';
+        bytes.forEach(function (c) { bin += String.fromCharCode(c); });
+        var b64 = btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        var target = APP + '#cr=' + b64;
+        if (w) { w.location.href = target; say('done — check the new tab'); setTimeout(function () { ov.remove(); }, 3000); }
+        else { ov.innerHTML = '✦ Lodestar: <a style="color:#E3B65B" target="_blank" href="' + target + '">open Lodestar with ' + list.length + ' titles</a>'; }
+      } catch (e) { if (w) { try { w.close(); } catch (x) {} } say('' + e.message); setTimeout(function () { ov.remove(); }, 9000); }
+    })();
+  }.toString() + ")(" + JSON.stringify(app) + ")";
+  return "javascript:" + encodeURIComponent(code);
+}
+var app = new URL('./', location.href).href;
+var href = bookmarklet(app);
+document.getElementById('bm').setAttribute('href', href);
+document.getElementById('bm').addEventListener('click', function (e) { e.preventDefault(); alert('Drag this button to your bookmarks bar instead of clicking it.'); });
+document.getElementById('copy').addEventListener('click', function () {
+  navigator.clipboard.writeText(decodeURIComponent(href.slice(11)).replace(/^/, 'javascript:')).then(function(){ document.getElementById('copy').textContent = 'Copied. Paste it as the URL of a new bookmark'; });
+});
+window.__bookmarklet = href;
+</script>
+</body>
+</html>

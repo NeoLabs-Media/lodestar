@@ -9,6 +9,7 @@ import '../app_state.dart';
 import '../data/importers.dart';
 import '../engine/recommender.dart';
 import '../engine/search.dart';
+import '../platform/web_bridge.dart';
 import 'crunchyroll_page.dart';
 import 'detail_page.dart';
 import 'rating_tour.dart';
@@ -285,13 +286,12 @@ class _LibraryPageState extends State<LibraryPage> {
       builder: (_) => SimpleDialog(
         title: const Text('Import your watch history'),
         children: [
-          if (!kIsWeb)
           SimpleDialogOption(
             onPressed: () => Navigator.pop(context, 'cr'),
-            child: const ListTile(
-              leading: Icon(Icons.play_circle_outline),
-              title: Text('Connect Crunchyroll'),
-              subtitle: Text('Log in inside the app, import your whole history in one tap'),
+            child: ListTile(
+              leading: const Icon(Icons.play_circle_outline),
+              title: const Text('Connect Crunchyroll'),
+              subtitle: Text(kIsWeb ? 'One bookmark click while you are signed in to Crunchyroll' : 'Log in inside the app, import your whole history in one tap'),
             ),
           ),
           SimpleDialogOption(
@@ -315,6 +315,8 @@ class _LibraryPageState extends State<LibraryPage> {
     );
     if (!context.mounted) return;
     switch (choice) {
+      case 'cr' when kIsWeb:
+        openInNewTab('crunchyroll-import.html');
       case 'cr':
         Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => ChangeNotifierProvider.value(value: app, child: const CrunchyrollPage()),

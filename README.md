@@ -22,7 +22,7 @@
 
 ## How it works
 
-1. **Add what you've seen**: search, paste a list, or import a file.
+1. **Add what you've seen**: search, paste a list, import a file, or pull your whole Crunchyroll history with one bookmark click (no password, no extension).
 2. **Rate and say why**: a few seconds per title.
 3. **Get a feed of unwatched picks**: filter by category, format, mood or length.
 4. **Check your taste profile**: a plain-language summary that updates as you rate.

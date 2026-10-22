@@ -34,7 +34,6 @@ class _CrunchyrollPageState extends State<CrunchyrollPage> {
 
   Future<void> _import() async {
     final app = context.read<AppState>();
-    final nav = Navigator.of(context);
     setState(() {
       busy = true;
       status = 'Checking your login…';
@@ -52,35 +51,8 @@ class _CrunchyrollPageState extends State<CrunchyrollPage> {
       }
       setState(() => status = 'Matching ${series.length} series…');
       await Future<void>.delayed(const Duration(milliseconds: 30));
-      final res = parseCrunchyrollSeries(series, app.data, app.search);
-      app.addMany(res.entries);
-      app.importHints.addAll(res.hints);
       if (!mounted) return;
-      await showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: Text('Found ${res.matched} of ${series.length} series'),
-          content: SizedBox(
-            width: 460,
-            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Next: a quick tour to rate them, so recommendations know what you actually loved.'),
-              if (res.unmatched.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                Text('${res.unmatched.length} not in the catalog (shorts, specials, adult or very new titles):',
-                    style: const TextStyle(fontSize: 12.5)),
-                const SizedBox(height: 4),
-                Flexible(child: SingleChildScrollView(child: Text(res.unmatched.take(40).join('\n'), style: const TextStyle(fontSize: 12)))),
-              ],
-            ]),
-          ),
-          actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Start rating tour'))],
-        ),
-      );
-      if (!mounted) return;
-      nav.pushReplacement(MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (_) => ChangeNotifierProvider.value(value: app, child: const RatingTourPage()),
-      ));
+      await importCrunchyrollSeries(context, app, series, replaceRoute: true);
     } on CrunchyrollError catch (e) {
       setState(() => status = e.message);
     } catch (e) {
@@ -139,5 +111,43 @@ class _CrunchyrollPageState extends State<CrunchyrollPage> {
         ),
       ]),
     );
+  }
+}
+
+/// Matches Crunchyroll series to the catalog, adds them as watched/unrated, reports what was
+/// found and starts the rating tour. Shared by the in-app login (native) and the web bookmarklet.
+Future<void> importCrunchyrollSeries(BuildContext context, AppState app, List<CrSeries> series, {bool replaceRoute = false}) async {
+  final nav = Navigator.of(context);
+  final res = parseCrunchyrollSeries(series, app.data, app.search);
+  app.addMany(res.entries);
+  app.importHints.addAll(res.hints);
+  if (!context.mounted) return;
+  await showDialog(
+    context: context,
+    builder: (_) => AlertDialog(
+      title: Text('Found ${res.matched} of ${series.length} series'),
+      content: SizedBox(
+        width: 460,
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Next: a quick tour to rate them, so recommendations know what you actually loved.'),
+          if (res.unmatched.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text('${res.unmatched.length} not in the catalog (shorts, specials, adult or very new titles):', style: const TextStyle(fontSize: 12.5)),
+            const SizedBox(height: 4),
+            Flexible(child: SingleChildScrollView(child: Text(res.unmatched.take(40).join('\n'), style: const TextStyle(fontSize: 12)))),
+          ],
+        ]),
+      ),
+      actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Start rating tour'))],
+    ),
+  );
+  final route = MaterialPageRoute(
+    fullscreenDialog: true,
+    builder: (_) => ChangeNotifierProvider.value(value: app, child: const RatingTourPage()),
+  );
+  if (replaceRoute) {
+    nav.pushReplacement(route);
+  } else {
+    nav.push(route);
   }
 }

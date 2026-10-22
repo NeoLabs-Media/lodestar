@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
+  bookmarkletPayloadTest();
   test('token + cursor pagination + series aggregation (mocked API)', () async {
     final calls = <String>[];
     final client = MockClient((req) async {
@@ -48,5 +49,22 @@ void main() {
   test('expired session gives a friendly error', () async {
     final client = MockClient((_) async => http.Response('no', 401));
     expect(CrunchyrollClient(client).fetchHistory('x'), throwsA(isA<CrunchyrollError>()));
+  });
+}
+
+void bookmarkletPayloadTest() {
+  test('bookmarklet payload decodes (base64url, unicode, missing fields)', () {
+    final json = jsonEncode([
+      {'t': 'Frieren: Beyond Journey\'s End', 'n': 28, 'l': '2024-03-22T10:00:00Z'},
+      {'t': '呪術廻戦', 'n': 3, 'l': ''},
+      {'t': '', 'n': 1},
+    ]);
+    final b64 = base64Url.encode(utf8.encode(json)).replaceAll('=', '');
+    final s = parseBookmarkletPayload(b64);
+    expect(s.length, 2);
+    expect(s[0].title, startsWith('Frieren'));
+    expect(s[0].episodes, 28);
+    expect(s[1].title, '呪術廻戦');
+    expect(s[1].lastWatched, isNull);
   });
 }
