@@ -136,11 +136,11 @@ class _SettingsPageState extends State<SettingsPage> {
                   Text('Swapping the database never touches your ratings — they are linked by title id.',
                       style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12.5)),
                   const SizedBox(height: 14),
-                  Text('Replace with a file', style: Theme.of(context).textTheme.labelLarge?.copyWith(color: cs.primary)),
+                  Text('Replace the catalog, or apply an update file', style: Theme.of(context).textTheme.labelLarge?.copyWith(color: cs.primary)),
                   const SizedBox(height: 6),
                   Wrap(spacing: 10, children: [
                     FilledButton.tonalIcon(
-                        onPressed: app.catalogBusy ? null : _pickDb, icon: const Icon(Icons.folder_open), label: const Text('Choose catalog.db…')),
+                        onPressed: app.catalogBusy ? null : _pickDb, icon: const Icon(Icons.folder_open), label: const Text('Choose catalog or update file…')),
                     if (app.catalogSource != 'bundled')
                       TextButton.icon(
                           onPressed: app.catalogBusy ? null : app.resetCatalog, icon: const Icon(Icons.restore), label: const Text('Back to bundled')),

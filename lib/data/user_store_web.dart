@@ -39,6 +39,7 @@ class WebUserStore implements UserStore {
         for (final e in _entries.entries)
           UserEntry(
             id: int.parse(e.key),
+            key: e.value['k'] as String?,
             status: EntryStatus.values.firstWhere((s) => s.name == e.value['s'], orElse: () => EntryStatus.watched),
             rating: (e.value['r'] as num?)?.toDouble(),
             reasons: ((e.value['x'] as List?) ?? const []).cast<String>().toSet(),
@@ -48,6 +49,7 @@ class WebUserStore implements UserStore {
       ];
 
   void _set(UserEntry e) => _entries['${e.id}'] = {
+        if (e.key != null) 'k': e.key,
         's': e.status.name,
         if (e.rating != null) 'r': e.rating,
         if (e.reasons.isNotEmpty) 'x': e.reasons.toList(),
@@ -72,6 +74,13 @@ class WebUserStore implements UserStore {
   @override
   void clear() {
     _entries.clear();
+    _flush();
+  }
+
+  @override
+  void relink(int oldId, int newId) {
+    final v = _entries.remove('$oldId');
+    if (v != null) _entries['$newId'] = v;
     _flush();
   }
 

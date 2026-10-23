@@ -52,6 +52,7 @@ class _DetailPageState extends State<DetailPage> {
                   avatar: Icon(Icons.star_rounded, size: 16, color: Colors.amber.shade600),
                   label: Text('${(t.meanScore! / 10).toStringAsFixed(1)} avg')),
             Chip(visualDensity: VisualDensity.compact, label: Text('${members(t.popularity)} members')),
+            if (c.kinds.length > 1) Chip(visualDensity: VisualDensity.compact, label: Text(kindLabel(t.kind))),
             if (t.ending != null) Chip(visualDensity: VisualDensity.compact, label: Text('${t.ending} ending')),
             if (t.tier == 'deep') Chip(visualDensity: VisualDensity.compact, label: const Text('deep profile')),
           ]),
@@ -124,6 +125,20 @@ class _DetailPageState extends State<DetailPage> {
                   visualDensity: VisualDensity.compact,
                   avatar: const Icon(Icons.warning_amber_rounded, size: 16),
                   label: Text(w)),
+          ]),
+        ),
+      if (_credits(d).isNotEmpty)
+        _Section(
+          title: 'Credits',
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            for (final (label, value) in _credits(d))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text.rich(TextSpan(children: [
+                  TextSpan(text: '$label  ', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12.5)),
+                  TextSpan(text: value),
+                ])),
+              ),
           ]),
         ),
       _Section(title: 'Franchise', child: _Franchise(idx: widget.idx, watchNote: d['watch'] as String?)),
@@ -241,6 +256,17 @@ class _DetailPageState extends State<DetailPage> {
       ),
     );
   }
+}
+
+/// Credits for movies/TV (directors, cast, creators, rating); empty for anime.
+List<(String, String)> _credits(Map<String, dynamic> d) {
+  String join(dynamic v) => v is List ? v.map((e) => e is Map ? '${e['name'] ?? e['n'] ?? ''}' : '$e').where((x) => x.isNotEmpty).join(', ') : '${v ?? ''}';
+  final out = <(String, String)>[];
+  for (final (key, label) in const [('dir', 'Directed by'), ('by', 'Created by'), ('cast', 'Starring'), ('rated', 'Rated'), ('countries', 'Countries')]) {
+    final v = join(d[key]);
+    if (v.isNotEmpty) out.add((label, v));
+  }
+  return out;
 }
 
 class _Section extends StatelessWidget {

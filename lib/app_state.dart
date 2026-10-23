@@ -15,6 +15,8 @@ import 'platform/web_bridge.dart';
 import 'data/user_store.dart';
 import 'engine/catalog_data.dart';
 import 'engine/catalog_loader.dart';
+import 'engine/catalog_update.dart';
+import 'platform/sql.dart' as sql;
 import 'engine/recommender.dart';
 import 'engine/search.dart';
 
@@ -127,10 +129,26 @@ class AppState extends ChangeNotifier {
 
   void _reloadEntries() {
     entries.clear();
-    for (final e in users.all()) {
-      final i = data.idToIdx[e.id];
-      if (i != null) entries[i] = e;
+    final backfill = <UserEntry>[];
+    for (var e in users.all()) {
+      var i = data.idToIdx[e.id];
+      if (i == null && e.key != null) {
+        // the catalog was renumbered: find the title again by its stable key
+        final j = data.keyToIdx[e.key];
+        if (j != null && !entries.containsKey(j)) {
+          users.relink(e.id, data.titles[j].id);
+          e = e.withKey(e.key, id: data.titles[j].id);
+          i = j;
+        }
+      }
+      if (i == null) continue;
+      if (e.key == null) {
+        e = e.withKey(data.titles[i].key);
+        backfill.add(e);
+      }
+      entries[i] = e;
     }
+    if (backfill.isNotEmpty) users.putAll(backfill);
   }
 
   // --- catalog configuration ----------------------------------------------------
@@ -147,7 +165,7 @@ class AppState extends ChangeNotifier {
     final schema = int.tryParse(test.data.meta['schema'] ?? '') ?? 0;
     final n = test.data.n;
     test.close();
-    if (schema < 1 || schema > 1) throw FormatException('Unsupported catalog schema "$schema".');
+    if (schema < 1 || schema > supportedSchema) throw FormatException('Unsupported catalog schema "$schema".');
     if (n == 0) throw const FormatException('The catalog contains no titles.');
     final old = store;
     await candidate.rename(_customFile.path);
@@ -159,6 +177,69 @@ class AppState extends ChangeNotifier {
     await refresh();
   }
 
+  /// Number of titles added by the last catalog update (shown as a dismissible notice).
+  int newTitlesNotice = 0;
+  List<int> newTitleIds = const [];
+
+  void dismissNewTitlesNotice() {
+    newTitlesNotice = 0;
+    notifyListeners();
+  }
+
+  bool _isDeltaFile(File f) {
+    final db = sql.openFile(f.path, readOnly: true);
+    try {
+      return isDeltaDb(db);
+    } finally {
+      db.dispose();
+    }
+  }
+
+  /// Applies an incoming file: a catalog update (delta) is merged into the installed catalog,
+  /// anything else is validated and installed as the new catalog. Returns a status message.
+  Future<String> _installOrMerge(File incoming, String source) async {
+    if (_isDeltaFile(incoming)) {
+      final res = await _applyDelta(incoming);
+      await incoming.delete();
+      return res.applied ? 'Catalog updated: ${res.message}' : res.message;
+    }
+    await _installCatalog(incoming, source);
+    return 'Now using the new catalog: ${data.n} titles, built ${data.meta['built_at']}.';
+  }
+
+  /// Merges a catalog_delta into the installed catalog file (the user's data is never touched).
+  Future<DeltaResult> _applyDelta(File deltaFile) async {
+    final path = catalogSource == 'bundled' ? p.join(dir.path, 'catalog.db') : _customFile.path;
+    store.close(); // release the read handle before writing
+    DeltaResult? res;
+    Object? failure;
+    final target = sql.openFile(path);
+    final delta = sql.openFile(deltaFile.path, readOnly: true);
+    try {
+      res = mergeDelta(target, delta);
+    } catch (e) {
+      failure = e;
+    } finally {
+      target.dispose();
+      delta.dispose();
+    }
+    _attach(CatalogStore.open(path));
+    if (failure != null) throw failure;
+    if (res!.applied) {
+      newTitlesNotice = res.added;
+      newTitleIds = res.newIds;
+      await refresh();
+    }
+    return res;
+  }
+
+  /// Applies a catalog_delta file chosen by the user.
+  Future<String> applyDeltaFile(File picked) async {
+    final tmp = File(p.join(dir.path, 'catalog_incoming.db'));
+    await _copyMaybeGzip(picked, tmp);
+    return _installOrMerge(tmp, 'file');
+  }
+
   Future<void> useCatalogFile(File picked) async {
     if (kIsWeb) return;
     catalogBusy = true;
@@ -166,8 +247,7 @@ class AppState extends ChangeNotifier {
     try {
       final tmp = File(p.join(dir.path, 'catalog_incoming.db'));
       await _copyMaybeGzip(picked, tmp);
-      await _installCatalog(tmp, 'file');
-      _status('Now using ${picked.uri.pathSegments.last}: ${data.n} titles, built ${data.meta['built_at']}.');
+      _status(await _installOrMerge(tmp, 'file'));
     } catch (e) {
       _status('That file was not accepted: $e');
     } finally {
@@ -244,11 +324,11 @@ class AppState extends ChangeNotifier {
       final tmp = File(p.join(dir.path, 'catalog_incoming.db'));
       await _copyMaybeGzip(raw, tmp);
       await raw.delete();
-      await _installCatalog(tmp, 'url');
+      final outcome = await _installOrMerge(tmp, 'url');
       users.setSetting('catalog_etag', newEtag);
       users.setSetting('catalog_lastmod', newMod);
       users.setSetting('catalog_len', len == null ? '' : '$len');
-      _status('Updated: ${data.n} titles, built ${data.meta['built_at']}.');
+      _status(outcome);
     } catch (e) {
       _status('Could not update: $e');
     } finally {
@@ -341,6 +421,7 @@ class AppState extends ChangeNotifier {
       {double? rating, Set<String> reasons = const {}, String note = '', bool recompute = true}) {
     final e = UserEntry(
       id: data.titles[idx].id,
+      key: data.titles[idx].key,
       status: EntryStatus.watched,
       rating: rating,
       reasons: reasons,
@@ -377,6 +458,7 @@ class AppState extends ChangeNotifier {
     final old = entries[idx];
     final e = UserEntry(
       id: data.titles[idx].id,
+      key: data.titles[idx].key,
       status: s,
       rating: s == EntryStatus.watched ? old?.rating : null,
       reasons: s == EntryStatus.watched ? (old?.reasons ?? {}) : {},
@@ -406,7 +488,7 @@ class AppState extends ChangeNotifier {
       if (old != null && old.status == EntryStatus.watched && e.status == EntryStatus.watched && old.rating != null && e.rating == null) {
         continue; // never overwrite a real rating with "unrated"
       }
-      final ne = UserEntry(id: e.id, status: e.status, rating: e.rating, reasons: e.reasons, note: e.note, updatedAt: now);
+      final ne = UserEntry(id: e.id, key: data.titles[i].key, status: e.status, rating: e.rating, reasons: e.reasons, note: e.note, updatedAt: now);
       entries[i] = ne;
       toSave.add(ne);
     }
@@ -432,6 +514,7 @@ class AppState extends ChangeNotifier {
           'moods': c.moods.toList(),
           'excludeWarnings': c.excludeWarnings.toList(),
           'categories': c.categories.toList(),
+          'kinds': c.kinds.toList(),
           'minYear': c.minYear,
         }));
     users.setSetting('obscurity', c.obscurity.toStringAsFixed(3));
@@ -451,6 +534,7 @@ class AppState extends ChangeNotifier {
         moods: ((m['moods'] as List?) ?? const []).cast<String>().toSet(),
         excludeWarnings: ((m['excludeWarnings'] as List?) ?? const []).cast<String>().toSet(),
         categories: ((m['categories'] as List?) ?? const []).cast<String>().toSet(),
+        kinds: ((m['kinds'] as List?) ?? const []).cast<String>().toSet(),
         minYear: m['minYear'] as int?,
       );
     } catch (_) {}
@@ -459,6 +543,7 @@ class AppState extends ChangeNotifier {
   int get activeFilterCount =>
       controls.formats.length +
       controls.categories.length +
+      (data.kinds.length > 1 ? controls.kinds.length : 0) +
       controls.moods.length +
       controls.excludeWarnings.length +
       (controls.maxEpisodes != null ? 1 : 0) +

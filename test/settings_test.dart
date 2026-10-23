@@ -34,11 +34,12 @@ void main() {
     expect(() => a.restoreBackup('{"format":"nope"}', replace: false), throwsFormatException);
   });
 
-  test('catalog: URL auto-update (ETag), gzip, bad file rejected, reset', () async {
+  test('catalog: URL auto-update (ETag), gzip, bad file rejected, reset', timeout: const Timeout(Duration(minutes: 3)), () async {
     final d = Directory.systemTemp.createTempSync('atlas_cat');
     final a = await fresh(d);
     a.rate(3, rating: 8);
     final bundled = File('catalog.db');
+    final gzipped = gzip.encode(await bundled.readAsBytes()); // compress once; the big file is served several times
     var conditional = 0;
     final server = await HttpServer.bind('127.0.0.1', 0);
     String serving = 'good';
@@ -52,7 +53,7 @@ void main() {
         req.response.statusCode = 304;
       } else {
         req.response.headers.set('etag', '"v1"');
-        req.response.add(gzip.encode(await bundled.readAsBytes())); // served gzipped
+        req.response.add(gzipped); // served gzipped
       }
       await req.response.close();
     });
@@ -70,6 +71,10 @@ void main() {
     a.users.close();
     final b = await fresh(d);
     expect(b.catalogSource, 'url');
+    // the start-up auto-check runs in the background; let it finish before the next explicit check
+    while (b.catalogBusy) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
 
     // a broken file is rejected and the old catalog keeps working
     serving = 'bad';

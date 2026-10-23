@@ -56,7 +56,8 @@ class TitleSearch {
     }
   }
 
-  List<SearchHit> search(String query, {int limit = 12}) {
+  /// [kind] restricts hits to one media kind (anime | movie | tv); null searches everything.
+  List<SearchHit> search(String query, {int limit = 12, String? kind}) {
     final q = normalizeTitle(query);
     if (q.isEmpty) return const [];
     final qt = q.split(' ');
@@ -66,6 +67,7 @@ class TitleSearch {
     }
 
     for (var k = 0; k < _names.length; k++) {
+      if (kind != null && c.titles[_owner[k]].kind != kind) continue;
       final name = _names[k];
       double s = -1;
       if (name == q) {
@@ -85,6 +87,7 @@ class TitleSearch {
     if (best.length < 6 && q.length >= 3) {
       for (var k = 0; k < _names.length; k++) {
         if (best.containsKey(_owner[k])) continue;
+        if (kind != null && c.titles[_owner[k]].kind != kind) continue;
         final s = _fuzzy(qt, _names[k]);
         if (s > 0) put(_owner[k], s - (_primary[k] ? 0 : 3));
       }
@@ -143,8 +146,8 @@ class TitleSearch {
   }
 
   /// Best single match for a free-text line (bulk paste). Null when nothing convincing.
-  int? bestMatch(String line) {
-    final hits = search(line, limit: 3);
+  int? bestMatch(String line, {String? kind}) {
+    final hits = search(line, limit: 3, kind: kind);
     if (hits.isEmpty) return null;
     return hits.first.raw >= 46 ? hits.first.idx : null;
   }

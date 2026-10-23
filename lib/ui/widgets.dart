@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import '../engine/catalog_data.dart';
 
 class Cover extends StatelessWidget {
+  /// Tests set this to render placeholders instead of loading network images.
+  static bool offline = false;
   final String url;
   final double width, height;
   final double radius;
@@ -23,7 +25,7 @@ class Cover extends StatelessWidget {
       ),
       child: Icon(Icons.movie_outlined, color: cs.onSurfaceVariant.withValues(alpha: .5)),
     );
-    if (url.isEmpty) return ph;
+    if (url.isEmpty || offline) return ph;
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: CachedNetworkImage(
@@ -118,3 +120,23 @@ Future<void> copyText(BuildContext context, String text, {String? what}) async {
 /// Display title plus romaji when it differs, e.g. "Frieren: Beyond Journey's End (Sousou no Frieren)".
 String copyableTitle(Show t) =>
     (t.titleEn != null && t.titleEn!.isNotEmpty && t.titleEn != t.title) ? '${t.titleEn} (${t.title})' : t.title;
+
+String kindLabel(String kind) => switch (kind) { 'anime' => 'Anime', 'movie' => 'Movie', 'tv' => 'TV', _ => kind };
+
+/// Small outlined "ANIME / MOVIE / TV" tag; shown only when the catalog mixes media kinds.
+class KindBadge extends StatelessWidget {
+  final String kind;
+  const KindBadge(this.kind, {super.key});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: const Color(0xCC0D0D0C),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0x66ECE7DC)),
+      ),
+      child: Text(kindLabel(kind).toUpperCase(), style: const TextStyle(fontSize: 9.5, letterSpacing: 1.1, fontWeight: FontWeight.w600, color: Color(0xFFECE7DC))),
+    );
+  }
+}

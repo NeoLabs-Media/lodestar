@@ -1,54 +1,63 @@
 #!/usr/bin/env python3
-"""Build the bundled catalog asset (catalog.db) from the slim server snapshot.
+"""Build the bundled catalog asset (catalog.db, schema 2) -- or a small catalog_delta.db -- from the
+slim server snapshot (anime today; movies/TV rows carry media_type/tmdb/imdb/cover).
 
   1. merge cache/slim_new.db (output of fetch_snapshot.sh) into cache/slim.db   (incremental)
   2. embed embedding_text with BAAI/bge-small-en-v1.5 (fastembed/ONNX, CPU); cached by text hash
   3. write a compact SQLite catalog the Flutter app copies to its data dir on first run
 
 Run:  .venv/bin/python export.py [--limit N] [--skip-merge]
+      .venv/bin/python export.py --base catalog.db            # delta since that catalog's snapshot
+      .venv/bin/python export.py --delta-from 1792446036.25    # delta since a given updated_at stamp
 """
 import argparse
 import hashlib
 import json
-import re
+import os
 import sqlite3
-import sys
 import time
 import zlib
 from pathlib import Path
 
 import numpy as np
 
+from catalog_schema import (DELTA_FORMAT, DIM_ORDER, SCHEMA_VERSION, TITLE_NAMES, create_schema, pack_facets,
+                            title_key)
+
 HERE = Path(__file__).parent
-CACHE = HERE / "cache"
+CACHE = Path(os.environ["LODESTAR_CACHE"]) if os.environ.get("LODESTAR_CACHE") else HERE / "cache"
 OUT = HERE.parent / "catalog.db"
+DELTA_OUT = HERE.parent / "catalog_delta.db"
 MODEL = "BAAI/bge-small-en-v1.5"
 EMB_DIM = 384
-SCHEMA_VERSION = 1
 MIN_FACET_DF = 3
 FACET_KINDS = [
-    "anilist_tag", "appeal_factors", "archetypes", "character_arc_types", "comedy_styles",
+    "anilist_tag", "keyword", "appeal_factors", "archetypes", "character_arc_types", "comedy_styles",
     "content_warnings", "ending_types", "genre", "moods", "narrative_devices",
     "relationship_dynamics", "relationship_types", "romance_dynamics", "romance_payoffs",
     "setting_types", "story_structures", "themes",
 ]
-DIM_ORDER = [
-    "romance_centrality", "romance_slow_burn", "romantic_payoff", "fanservice", "sexual_content",
-    "action_intensity", "violence_gore", "psychological_darkness", "horror_dread", "tragedy",
-    "tearjerker", "comedy", "absurdity", "wholesomeness", "hype", "tension_suspense",
-    "mystery_intrigue", "plot_complexity", "worldbuilding_depth", "character_depth",
-    "character_growth", "protagonist_power", "protagonist_agency", "ensemble_focus",
-    "moral_ambiguity", "philosophical_depth", "intellectual_strategy", "realism",
-    "slice_of_life", "pacing_speed", "serialization", "optimism", "ending_satisfaction",
-    "emotional_catharsis", "found_family", "rivalry_competition", "mature_themes",
-    "youth_focus", "cringe_factor", "cuteness", "coolness_style", "visual_spectacle_expected",
-    "newcomer_accessibility", "rewatch_value", "commitment",
-]
+# columns added to the slim snapshot for movies/TV (older caches get them via ALTER TABLE)
+SLIM_EXTRA = {"media_type": "TEXT", "tmdb_id": "INT", "imdb_id": "TEXT", "release_date": "TEXT", "cover": "TEXT"}
 
 
 def clip(s, n):
     s = (s or "").strip()
     return s if len(s) <= n else s[: n - 1].rstrip() + "…"
+
+
+def ensure_slim(db):
+    db.executescript("""
+    CREATE TABLE IF NOT EXISTS slim(anime_id INTEGER PRIMARY KEY, updated_at REAL, quality REAL,
+      profile TEXT, embedding_text TEXT, title TEXT, title_english TEXT, synonyms TEXT, picture TEXT,
+      thumbnail TEXT, popularity INT, score REAL, tier TEXT);
+    CREATE TABLE IF NOT EXISTS facet(anime_id INT, facet TEXT, value TEXT, weight REAL, canonical INT);
+    CREATE INDEX IF NOT EXISTS facet_a ON facet(anime_id);
+    """)
+    have = {r[1] for r in db.execute("PRAGMA table_info(slim)")}
+    for col, typ in SLIM_EXTRA.items():
+        if col not in have:
+            db.execute(f"ALTER TABLE slim ADD COLUMN {col} {typ}")
 
 
 def merge():
@@ -57,18 +66,23 @@ def merge():
         print("no slim_new.db to merge")
         return
     db = sqlite3.connect(CACHE / "slim.db")
-    db.executescript("""
-    CREATE TABLE IF NOT EXISTS slim(anime_id INTEGER PRIMARY KEY, updated_at REAL, quality REAL,
-      profile TEXT, embedding_text TEXT, title TEXT, title_english TEXT, synonyms TEXT, picture TEXT,
-      thumbnail TEXT, popularity INT, score REAL, tier TEXT);
-    CREATE TABLE IF NOT EXISTS facet(anime_id INT, facet TEXT, value TEXT, weight REAL, canonical INT);
-    CREATE INDEX IF NOT EXISTS facet_a ON facet(anime_id);
-    """)
+    ensure_slim(db)
     db.execute("ATTACH ? AS n", (str(new),))
+    newcols = {r[1] for r in db.execute("PRAGMA n.table_info(slim)")}
+    cols = [r[1] for r in db.execute("PRAGMA main.table_info(slim)") if r[1] in newcols]
+    cl = ",".join(cols)
     db.execute("DELETE FROM facet WHERE anime_id IN (SELECT anime_id FROM n.slim)")
-    db.execute("INSERT OR REPLACE INTO slim SELECT * FROM n.slim")
+    db.execute(f"INSERT OR REPLACE INTO slim({cl}) SELECT {cl} FROM n.slim")
     db.execute("INSERT INTO facet SELECT * FROM n.facet")
     mx = db.execute("SELECT MAX(updated_at) FROM n.slim").fetchone()[0]
+    if db.execute("SELECT 1 FROM n.sqlite_master WHERE name='alive'").fetchone():
+        # titles that vanished upstream (deleted / now adult) disappear from the snapshot too
+        gone = [r[0] for r in db.execute("SELECT anime_id FROM main.slim WHERE anime_id NOT IN (SELECT anime_id FROM n.alive)")]
+        for gid in gone:
+            db.execute("DELETE FROM slim WHERE anime_id=?", (gid,))
+            db.execute("DELETE FROM facet WHERE anime_id=?", (gid,))
+        if gone:
+            print(f"removed {len(gone)} titles that no longer exist upstream")
     db.commit()
     db.execute("DETACH n")
     n = db.execute("SELECT COUNT(*) FROM slim").fetchone()[0]
@@ -92,6 +106,14 @@ def embed_all(db, limit):
     if limit:
         todo = todo[:limit]
     print(f"embedding {len(todo)} new/changed texts")
+    if todo and os.environ.get("LODESTAR_FAKE_EMBEDDINGS"):
+        # deterministic stand-in vectors for pipeline tests (no model download)
+        for aid, h, text in todo:
+            rng = np.random.default_rng(int(h[:12], 16))
+            v = rng.normal(size=EMB_DIM).astype(np.float32)
+            emb.execute("INSERT OR REPLACE INTO emb VALUES(?,?,?)", (aid, h, (v / np.linalg.norm(v)).tobytes()))
+        emb.commit()
+        todo = []
     if todo:
         from fastembed import TextEmbedding
         model = TextEmbedding(MODEL)
@@ -106,6 +128,33 @@ def embed_all(db, limit):
             emb.commit()
             print(f"  {i + len(chunk)}/{len(todo)}  {time.time() - t0:.0f}s", flush=True)
     return emb
+
+
+def names(v, n=6):
+    out = []
+    for x in v or []:
+        t = x.get("name") if isinstance(x, dict) else x
+        if t and t not in out:
+            out.append(str(t))
+    return out[:n]
+
+
+def credits(p):
+    """Movie/TV extras for the detail screen (empty for anime)."""
+    out = {}
+    if names(p.get("directors")):
+        out["dir"] = names(p.get("directors"), 3)
+    if names(p.get("created_by")):
+        out["by"] = names(p.get("created_by"), 3)
+    if names(p.get("cast")):
+        out["cast"] = names(p.get("cast"), 6)
+    if p.get("content_rating"):
+        out["rated"] = str(p["content_rating"])
+    if p.get("countries"):
+        out["countries"] = names(p["countries"], 3)
+    if p.get("seasons"):
+        out["seasons"] = p["seasons"] if isinstance(p["seasons"], int) else len(p["seasons"])
+    return out
 
 
 def build_detail(p):
@@ -150,66 +199,58 @@ def build_detail(p):
         "protag": clip((p.get("protagonist") or {}).get("summary"), 260),
         "studios": (p.get("studios") or [])[:2],
         "src": p.get("source_material"),
+        **credits(p),
     }
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--limit", type=int, default=0, help="embed at most N new titles (testing)")
-    ap.add_argument("--skip-merge", action="store_true")
-    args = ap.parse_args()
-    CACHE.mkdir(exist_ok=True)
-    if not args.skip_merge:
-        merge()
-    db = sqlite3.connect(CACHE / "slim.db")
-    emb = embed_all(db, args.limit)
-    evecs = {r[0]: np.frombuffer(r[1], dtype=np.float32) for r in emb.execute("SELECT anime_id,v FROM emb")}
-
-    # facets: aggregate max weight per (anime, facet, value), canonical only
-    facets = {}
-    df = {}
-    for aid, f, v, w in db.execute(
-            "SELECT anime_id,facet,value,weight FROM facet WHERE canonical=1"):
+def load_facets(db):
+    """Aggregate max weight per (title, facet, value), canonical facets only + global df."""
+    facets, df = {}, {}
+    for aid, f, v, w in db.execute("SELECT anime_id,facet,value,weight FROM facet WHERE canonical=1"):
         if f not in FACET_KINDS:
             continue
         d = facets.setdefault(aid, {})
-        key = (f, v)
-        if w > d.get(key, -1):
-            d[key] = w
+        if w > d.get((f, v), -1):
+            d[(f, v)] = w
     for d in facets.values():
         for k in d:
             df[k] = df.get(k, 0) + 1
+    return facets, df
+
+
+def build_catalog(db, evecs, out_path, *, since=None, removed=(), snapshot=""):
+    """Writes a full catalog (since=None) or a delta of the titles with updated_at > since."""
+    delta = since is not None
+    facets, df = load_facets(db)
     vocab = sorted(k for k, c in df.items() if c >= MIN_FACET_DF)
     fid = {k: i for i, k in enumerate(vocab)}
     print(f"facet vocab: {len(vocab)}")
 
-    rows = db.execute("SELECT anime_id,quality,profile,title,title_english,synonyms,picture,thumbnail,"
-                      "popularity,score,tier FROM slim").fetchall()
-    rows = [r for r in rows if r[0] in evecs]
-    gscale = 127.0 / max(float(np.abs(np.stack([evecs[r[0]] for r in rows])).max()), 1e-6)
+    db.row_factory = sqlite3.Row
+    rows = [dict(r) for r in db.execute("SELECT * FROM slim")]
+    db.row_factory = None
+    rows = [r for r in rows if r["anime_id"] in evecs]
+    if delta:
+        rows = [r for r in rows if (r["updated_at"] or 0) > since]
+    if not rows:
+        print("nothing to write")
+        return 0
+    gscale = 127.0 / max(float(np.abs(np.stack([evecs[r["anime_id"]] for r in rows])).max()), 1e-6)
 
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    if OUT.exists():
-        OUT.unlink()
-    out = sqlite3.connect(OUT)
-    out.executescript("""
-    PRAGMA journal_mode=OFF;
-    CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT);
-    CREATE TABLE title(id INTEGER PRIMARY KEY, anilist INT, mal INT, title TEXT, title_en TEXT,
-      syn TEXT, year INT, season TEXT, format TEXT, episodes INT, status TEXT, popularity INT,
-      mean_score REAL, tier TEXT, quality REAL, thumb TEXT, pic TEXT, pitch TEXT, oneliner TEXT,
-      ending TEXT, genres TEXT, adult INT, emb BLOB, dims BLOB, facets BLOB, detail BLOB);
-    CREATE TABLE rel(id INT, other_anilist INT, type TEXT);
-    CREATE TABLE rec(id INT, other_anilist INT, rating INT);
-    CREATE TABLE facet_vocab(fid INTEGER PRIMARY KEY, kind TEXT, value TEXT, df INT);
-    """)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.unlink(missing_ok=True)
+    out = sqlite3.connect(out_path)
+    out.execute("PRAGMA journal_mode=OFF")
+    create_schema(out, delta=delta)
     for k, i in fid.items():
         out.execute("INSERT INTO facet_vocab VALUES(?,?,?,?)", (i, k[0], k[1], df[k]))
 
     n_ok = 0
-    for (aid, quality, pj, title, title_en, syn, pic, thumb, pop, score, tier) in rows:
+    max_upd = 0.0
+    for r in rows:
+        aid = r["anime_id"]
         try:
-            p = json.loads(pj)
+            p = json.loads(r["profile"])
         except Exception:
             continue
         if p.get("is_adult"):
@@ -219,65 +260,121 @@ def main():
         one = rec.get("one_line_pitch") or ""
         if not one and not pitch:
             continue
+        kind = (r.get("media_type") or p.get("media_type") or "anime").lower()
+        kind = kind if kind in ("anime", "movie", "tv") else "anime"
+        ids = dict(p.get("ids") or {})
+        if r.get("tmdb_id"):
+            ids["tmdb"] = r["tmdb_id"]
+        if r.get("imdb_id"):
+            ids["imdb"] = r["imdb_id"]
         dims = bytearray()
         for k in DIM_ORDER:
             d = (p.get("dimensions") or {}).get(k)
-            s = d.get("score") if isinstance(d, dict) else d
-            dims.append(255 if s is None else int(round(max(0.0, min(10.0, float(s))) * 25)))
+            sc = d.get("score") if isinstance(d, dict) else d
+            dims.append(255 if sc is None else int(round(max(0.0, min(10.0, float(sc))) * 25)))
         v = evecs[aid]
         v = v / (np.linalg.norm(v) + 1e-9)
         q = np.clip(np.round(v * gscale), -127, 127).astype(np.int8).tobytes()
-        fb = bytearray()
-        for (f, val), w in sorted(facets.get(aid, {}).items(), key=lambda kv: -kv[1]):
-            if (f, val) in fid:
-                i = fid[(f, val)]
-                fb += bytes((i & 255, i >> 8, int(round(max(0, min(10, w)) * 25))))
+        fb = pack_facets([(fid[k], w) for k, w in facets.get(aid, {}).items() if k in fid])
         try:
-            syns = json.loads(syn) if syn else []
+            syns = json.loads(r["synonyms"]) if r["synonyms"] else []
         except Exception:
             syns = []
-        names = []
-        for s in [title, title_en, p.get("title_native")] + syns:
-            if s and s not in names:
-                names.append(s)
-        ids = p.get("ids") or {}
+        nm = []
+        for sname in [r["title"], r["title_english"], p.get("title_native")] + syns:
+            if sname and sname not in nm:
+                nm.append(sname)
         cw = (p.get("emotion") or {}).get("content_warnings") or []
         detail = build_detail(p)
         detail["cw"] = cw[:10]
         detail["moods"] = [m.get("name") for m in ((p.get("emotion") or {}).get("moods") or [])[:6]]
         detail["themes"] = [m.get("name") for m in ((p.get("emotion") or {}).get("themes") or [])[:6]]
         detail["dur"] = p.get("duration_min")
-        out.execute(
-            "INSERT INTO title VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (aid, ids.get("anilist"), ids.get("mal"), title, title_en or p.get("title_english"),
-             "\n".join(names[2:30]), p.get("year"), p.get("season"), p.get("format"),
-             p.get("episodes"), p.get("status"), pop or p.get("popularity") or 0,
-             p.get("mean_score") or (score and score * 10), tier, quality, thumb, pic,
-             clip(pitch, 420), clip(one, 220),
-             ((p.get("narrative") or {}).get("structure") or {}).get("ending_type"),
-             ",".join(p.get("genres") or []), 0, q, bytes(dims), bytes(fb),
-             zlib.compress(json.dumps(detail, ensure_ascii=False, separators=(",", ":")).encode(), 9)))
-        for r in p.get("relations") or []:
-            if r.get("anilist"):
-                out.execute("INSERT INTO rel VALUES(?,?,?)", (aid, r["anilist"], r.get("type")))
-        for r in p.get("anilist_recommendations") or []:
-            if r.get("anilist"):
-                out.execute("INSERT INTO rec VALUES(?,?,?)", (aid, r["anilist"], r.get("rating") or 0))
+        release = r.get("release_date") or p.get("release_date")
+        year = p.get("year") or (int(release[:4]) if release and release[:4].isdigit() else None)
+        cover = (p.get("cover") or r.get("cover")) if kind != "anime" else (r.get("picture") or r.get("thumbnail"))
+        fmt = p.get("format") or ("MOVIE" if kind == "movie" else "TV" if kind == "tv" else None)
+        upd = r["updated_at"] or 0
+        max_upd = max(max_upd, upd)
+        row = {
+            "id": aid, "key": title_key(kind, ids, aid), "kind": kind, "anilist": ids.get("anilist"), "mal": ids.get("mal"),
+            "tmdb": ids.get("tmdb"), "imdb": ids.get("imdb"), "title": r["title"],
+            "title_en": r["title_english"] or p.get("title_english"), "syn": "\n".join(nm[2:30]), "year": year,
+            "season": p.get("season"), "format": fmt, "episodes": p.get("episodes"), "status": p.get("status"),
+            "release_date": release, "popularity": r["popularity"] or p.get("popularity") or p.get("vote_count") or 0,
+            "mean_score": p.get("mean_score") or (r["score"] and r["score"] * 10), "tier": r["tier"],
+            "quality": r["quality"], "thumb": r.get("thumbnail"), "pic": r.get("picture"), "cover": cover,
+            "pitch": clip(pitch, 420), "oneliner": clip(one, 220),
+            "ending": ((p.get("narrative") or {}).get("structure") or {}).get("ending_type"),
+            "genres": ",".join(p.get("genres") or []), "adult": 0, "emb": q, "dims": bytes(dims), "facets": fb,
+            "detail": zlib.compress(json.dumps(detail, ensure_ascii=False, separators=(",", ":")).encode(), 9),
+            "updated_at": upd,
+        }
+        out.execute(f"INSERT INTO title({','.join(TITLE_NAMES)}) VALUES({','.join('?' * len(TITLE_NAMES))})",
+                    [row[c] for c in TITLE_NAMES])
+        for rl in p.get("relations") or []:
+            if rl.get("anilist"):
+                out.execute("INSERT INTO rel VALUES(?,?,?)", (aid, f"anilist:{rl['anilist']}", rl.get("type")))
+        for rc in p.get("anilist_recommendations") or []:
+            if rc.get("anilist"):
+                out.execute("INSERT INTO rec VALUES(?,?,?)", (aid, f"anilist:{rc['anilist']}", rc.get("rating") or 0))
+        for rc in p.get("tmdb_recommendations") or []:
+            k = (rc.get("kind") or "").lower()
+            if rc.get("id") and k in ("movie", "tv"):
+                out.execute("INSERT INTO rec VALUES(?,?,?)", (aid, f"tmdb:{k}:{rc['id']}", rc.get("rating") or 2))
         n_ok += 1
+    to = snapshot or str(max_upd)
     meta = {
         "schema": SCHEMA_VERSION, "built_at": time.strftime("%Y-%m-%d %H:%M"), "count": n_ok,
-        "emb_dim": EMB_DIM, "emb_scale": gscale, "model": MODEL,
-        "dims": json.dumps(DIM_ORDER),
-        "snapshot": (CACHE / "last_updated_at").read_text() if (CACHE / "last_updated_at").exists() else "",
+        "emb_dim": EMB_DIM, "emb_scale": gscale, "model": MODEL, "dims": json.dumps(DIM_ORDER), "snapshot": to,
     }
     for k, v in meta.items():
         out.execute("INSERT INTO meta VALUES(?,?)", (k, str(v)))
-    out.execute("CREATE INDEX rel_id ON rel(id)")
+    if delta:
+        for k, v in {"format": DELTA_FORMAT, "from": since, "to": float(to), "built_at": meta["built_at"]}.items():
+            out.execute("INSERT INTO delta_meta VALUES(?,?)", (k, str(v)))
+        for rid in removed:
+            out.execute("INSERT OR IGNORE INTO removed VALUES(?)", (rid,))
     out.commit()
     out.execute("VACUUM")
     out.close()
-    (OUT.parent / "catalog.version").write_text(f"{meta['built_at']} n={n_ok} schema={SCHEMA_VERSION}\n")
-    print(f"wrote {OUT} with {n_ok} titles, {OUT.stat().st_size / 1e6:.1f} MB")
+    if not delta:
+        (out_path.parent / "catalog.version").write_text(f"{meta['built_at']} n={n_ok} schema={SCHEMA_VERSION}\n")
+    print(f"wrote {out_path} with {n_ok} titles{' (delta)' if delta else ''}, {out_path.stat().st_size / 1e6:.1f} MB")
+    return n_ok
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Build catalog.db (full) or catalog_delta.db (changes only)")
+    ap.add_argument("--limit", type=int, default=0, help="embed at most N new titles (testing)")
+    ap.add_argument("--skip-merge", action="store_true")
+    ap.add_argument("--delta-from", type=float, help="write only titles with updated_at > this stamp")
+    ap.add_argument("--base", type=Path, help="an existing catalog.db: delta starts at its snapshot and lists "
+                                              "titles it contains that no longer exist")
+    ap.add_argument("--out", type=Path, help="output path (default catalog.db / catalog_delta.db)")
+    args = ap.parse_args()
+    CACHE.mkdir(exist_ok=True)
+    if not args.skip_merge:
+        merge()
+    db = sqlite3.connect(CACHE / "slim.db")
+    ensure_slim(db)
+    emb = embed_all(db, args.limit)
+    evecs = {r[0]: np.frombuffer(r[1], dtype=np.float32) for r in emb.execute("SELECT anime_id,v FROM emb")}
+    last = (CACHE / "last_updated_at")
+    snapshot = last.read_text().strip() if last.exists() else ""
+
+    since, removed = args.delta_from, []
+    if args.base:
+        bdb = sqlite3.connect(args.base)
+        bmeta = dict(bdb.execute("SELECT key,value FROM meta"))
+        since = float(bmeta.get("snapshot") or 0) if since is None else since
+        base_ids = {r[0] for r in bdb.execute("SELECT id FROM title")}
+        now_ids = {r[0] for r in db.execute("SELECT anime_id FROM slim")}
+        removed = sorted(base_ids - now_ids)
+    if since is not None:
+        build_catalog(db, evecs, args.out or DELTA_OUT, since=since, removed=removed, snapshot=snapshot)
+    else:
+        build_catalog(db, evecs, args.out or OUT, snapshot=snapshot)
 
 
 if __name__ == "__main__":

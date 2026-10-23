@@ -10,6 +10,9 @@ abstract class UserStore {
   void putAll(Iterable<UserEntry> entries);
   void clear();
   void remove(int id);
+
+  /// Points an entry at a new catalog id (used when the catalog's internal ids were renumbered).
+  void relink(int oldId, int newId);
   String? setting(String key);
   void setSetting(String key, String value);
   void close();

@@ -15,6 +15,7 @@ String buildBackup(List<UserEntry> entries, CatalogData c, {Map<String, String> 
     final t = i == null ? null : c.titles[i];
     rows.add({
       'id': e.id,
+      if (t != null) 'key': t.key,
       if (t?.anilist != null) 'anilist': t!.anilist,
       if (t?.mal != null) 'mal': t!.mal,
       if (t != null) 'title': t.title,
@@ -54,7 +55,8 @@ RestoreResult parseBackup(String json, CatalogData c, TitleSearch search) {
       if (t.mal != null) t.mal!: t.idx
   };
   for (final r in (m['entries'] as List).cast<Map>()) {
-    int? idx = c.idToIdx[r['id']];
+    int? idx = r['key'] == null ? null : c.keyToIdx['${r['key']}']; // stable key first, ids can be renumbered
+    idx ??= c.idToIdx[r['id']];
     idx ??= r['anilist'] == null ? null : byAnilist[r['anilist']];
     idx ??= r['mal'] == null ? null : byMal[r['mal']];
     idx ??= r['title'] == null ? null : search.bestMatch('${r['title']}');
@@ -64,6 +66,7 @@ RestoreResult parseBackup(String json, CatalogData c, TitleSearch search) {
     }
     res.entries.add(UserEntry(
       id: c.titles[idx].id,
+      key: c.titles[idx].key,
       status: EntryStatus.values.firstWhere((s) => s.name == r['status'], orElse: () => EntryStatus.watched),
       rating: (r['rating'] as num?)?.toDouble(),
       reasons: ((r['reasons'] as List?) ?? const []).cast<String>().toSet(),

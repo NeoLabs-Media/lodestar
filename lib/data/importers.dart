@@ -63,7 +63,7 @@ ImportResult parseMalXml(List<int> bytes, CatalogData c, TitleSearch search) {
     final malId = int.tryParse(g('series_animedb_id'));
     final name = g('series_title');
     var idx = malId == null ? null : byMal[malId];
-    idx ??= name.isEmpty ? null : search.bestMatch(name);
+    idx ??= name.isEmpty ? null : search.bestMatch(name, kind: 'anime');
     if (idx == null) {
       res.unmatched.add(name.isEmpty ? '(MAL id $malId)' : name);
       continue;
@@ -157,7 +157,7 @@ ImportResult parseCrunchyrollSeries(List<CrSeries> series, CatalogData c, TitleS
   final res = ImportResult();
   final seen = <int>{};
   for (final s in series) {
-    final idx = search.bestMatch(s.title);
+    final idx = search.bestMatch(s.title, kind: 'anime');
     if (idx == null) {
       res.unmatched.add(s.title);
     } else if (seen.add(idx)) {

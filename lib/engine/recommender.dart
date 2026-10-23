@@ -10,13 +10,17 @@ enum EntryStatus { watched, planned, notInterested, ignored }
 /// One row of user state about a title.
 class UserEntry {
   final int id; // catalog title id
+  final String? key; // stable external title key (kind + external id) used to re-link if ids change
   final EntryStatus status;
   final double? rating; // 1..10 (half steps)
   final Set<String> reasons; // "g:romance" or "f:kind|value"
   final String note;
   final int updatedAt;
+  UserEntry withKey(String? k, {int? id}) => UserEntry(
+      id: id ?? this.id, key: k, status: status, rating: rating, reasons: reasons, note: note, updatedAt: updatedAt);
   const UserEntry({
     required this.id,
+    this.key,
     required this.status,
     this.rating,
     this.reasons = const {},
@@ -33,6 +37,7 @@ class Controls {
   Set<String> moods;
   Set<String> excludeWarnings;
   Set<String> categories; // any-of, see categories.dart
+  Set<String> kinds; // media kinds to include: anime | movie | tv (empty = mix everything)
   int? minYear;
   Controls({
     this.obscurity = 0.45,
@@ -41,11 +46,13 @@ class Controls {
     Set<String>? moods,
     Set<String>? excludeWarnings,
     Set<String>? categories,
+    Set<String>? kinds,
     this.minYear,
   })  : formats = formats ?? {},
         moods = moods ?? {},
         excludeWarnings = excludeWarnings ?? {},
-        categories = categories ?? {};
+        categories = categories ?? {},
+        kinds = kinds ?? {};
 }
 
 class Rec {
@@ -429,7 +436,9 @@ class Recommender {
     for (var k = 0; k < categories.length; k++) {
       rules[k] = [
         for (final (kind, value, w) in categories[k].any)
-          if (c.facetIndex['$kind|$value'] != null) (c.facetIndex['$kind|$value']!, w)
+          // movie/TV catalogs carry TMDB keywords where anime carry AniList tags
+          for (final kk in (kind == 'anilist_tag' ? ['anilist_tag', 'keyword'] : [kind]))
+            if (c.facetIndex['$kk|$value'] != null) (c.facetIndex['$kk|$value']!, w)
       ];
     }
     final out = Int32List(c.n);
@@ -456,6 +465,7 @@ class Recommender {
 
   bool _passes(int i, Controls ctl) {
     final t = c.titles[i];
+    if (ctl.kinds.isNotEmpty && !ctl.kinds.contains(t.kind)) return false;
     if (ctl.categories.isNotEmpty) {
       var ok = false;
       for (final key in ctl.categories) {

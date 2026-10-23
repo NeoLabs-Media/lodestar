@@ -5,7 +5,11 @@ import 'dart:typed_data';
 class Show {
   final int idx; // position in the catalog arrays
   final int id; // catalog title id
-  final int? anilist, mal;
+  final int? anilist, mal, tmdb;
+  final String? imdb;
+  final String key; // stable external identity: anilist:N | mal:N | tmdb:movie:N | tmdb:tv:N | imdb:ttN | id:N
+  final String kind; // anime | movie | tv
+  final String? releaseDate, coverUrl;
   final String title;
   final String? titleEn;
   final List<String> synonyms;
@@ -24,6 +28,12 @@ class Show {
     required this.id,
     this.anilist,
     this.mal,
+    this.tmdb,
+    this.imdb,
+    required this.key,
+    this.kind = 'anime',
+    this.releaseDate,
+    this.coverUrl,
     required this.title,
     this.titleEn,
     this.synonyms = const [],
@@ -46,7 +56,8 @@ class Show {
 
   /// Display title: prefer English when available, romaji as fallback.
   String get display => (titleEn != null && titleEn!.isNotEmpty) ? titleEn! : title;
-  String get cover => (pic ?? thumb) ?? '';
+  String get cover => (coverUrl != null && coverUrl!.isNotEmpty) ? coverUrl! : ((pic ?? thumb) ?? '');
+  bool get isAnime => kind == 'anime';
 }
 
 class FacetDef {
@@ -78,6 +89,8 @@ class CatalogData {
 
   late final Map<int, int> idToIdx;
   late final Map<int, int> anilistToIdx;
+  late final Map<String, int> keyToIdx;
+  late final Set<String> kinds; // media kinds present in the catalog
   late final Float32List obscurity; // 0 = most popular .. 1 = least popular
   late final Float32List qual; // 0..1
   late final Int32List franchise; // cluster id per title
@@ -103,6 +116,8 @@ class CatalogData {
         dimStd = Float32List(dimCount),
         facetIdf = Float32List(vocab.length) {
     idToIdx = {for (final t in titles) t.id: t.idx};
+    keyToIdx = {for (final t in titles) t.key: t.idx};
+    kinds = {for (final t in titles) t.kind};
     anilistToIdx = {
       for (final t in titles)
         if (t.anilist != null) t.anilist!: t.idx

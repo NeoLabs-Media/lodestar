@@ -35,9 +35,12 @@ class CatalogStore {
       for (final r in vocabRows) FacetDef(r['fid'] as int, r['kind'] as String, r['value'] as String, r['df'] as int)
     ];
 
-    final rows = db.select('SELECT id,anilist,mal,title,title_en,syn,year,season,format,episodes,status,'
-        'popularity,mean_score,tier,quality,thumb,pic,pitch,oneliner,ending,genres,emb,dims,facets '
-        'FROM title ORDER BY id');
+    // schema 1 (anime only) and schema 2 (multi-media) catalogs both load; missing columns get defaults
+    final cols = {for (final r in db.select('PRAGMA table_info(title)')) r['name'] as String};
+    String col(String name, [String fallback = 'NULL']) => cols.contains(name) ? name : '$fallback AS $name';
+    final rows = db.select('SELECT id,${col('key')},${col('kind', "'anime'")},anilist,mal,${col('tmdb')},${col('imdb')},'
+        'title,title_en,syn,year,season,format,episodes,status,${col('release_date')},popularity,mean_score,tier,quality,'
+        'thumb,pic,${col('cover')},pitch,oneliner,ending,genres,emb,dims,facets FROM title ORDER BY id');
     final n = rows.length;
     final titles = <Show>[];
     final emb = Float32List(n * embDim);
@@ -52,6 +55,12 @@ class CatalogStore {
         id: r['id'] as int,
         anilist: r['anilist'] as int?,
         mal: r['mal'] as int?,
+        tmdb: r['tmdb'] as int?,
+        imdb: r['imdb'] as String?,
+        key: (r['key'] as String?) ?? _legacyKey(r['id'] as int, r['anilist'] as int?, r['mal'] as int?),
+        kind: (r['kind'] as String?) ?? 'anime',
+        releaseDate: r['release_date'] as String?,
+        coverUrl: r['cover'] as String?,
         title: r['title'] as String? ?? '?',
         titleEn: r['title_en'] as String?,
         synonyms: ((r['syn'] as String?) ?? '').split('\n').where((s) => s.isNotEmpty).toList(),
@@ -93,20 +102,27 @@ class CatalogStore {
       i++;
     }
     final idx = {for (final t in titles) t.id: t.idx};
-    final anilistIdx = {
-      for (final t in titles)
-        if (t.anilist != null) t.anilist!: t.idx
-    };
+    final keyIdx = {for (final t in titles) t.key: t.idx};
+    String otherKey(Row r) {
+      final k = r['other_key'];
+      if (k != null) return k as String;
+      return 'anilist:${r['other_anilist']}'; // schema 1
+    }
+
+    String linkCols(String table) =>
+        {for (final r in db.select('PRAGMA table_info($table)')) r['name'] as String}.contains('other_key')
+            ? 'other_key'
+            : 'other_anilist';
     final relations = List.generate(n, (_) => <(int, String)>[]);
-    for (final r in db.select('SELECT id,other_anilist,type FROM rel')) {
+    for (final r in db.select('SELECT id,${linkCols('rel')},type FROM rel')) {
       final a = idx[r['id'] as int];
-      final b = anilistIdx[r['other_anilist'] as int];
+      final b = keyIdx[otherKey(r)];
       if (a != null && b != null) relations[a].add((b, r['type'] as String? ?? ''));
     }
     final recs = List.generate(n, (_) => <(int, int)>[]);
-    for (final r in db.select('SELECT id,other_anilist,rating FROM rec')) {
+    for (final r in db.select('SELECT id,${linkCols('rec')},rating FROM rec')) {
       final a = idx[r['id'] as int];
-      final b = anilistIdx[r['other_anilist'] as int];
+      final b = keyIdx[otherKey(r)];
       if (a != null && b != null) {
         final rating = (r['rating'] as int?) ?? 1;
         recs[a].add((b, rating));
@@ -142,3 +158,7 @@ class CatalogStore {
 
   void close() => db.dispose();
 }
+
+/// Key for catalogs written before schema 2.
+String _legacyKey(int id, int? anilist, int? mal) =>
+    anilist != null ? 'anilist:$anilist' : (mal != null ? 'mal:$mal' : 'id:$id');

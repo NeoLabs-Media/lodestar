@@ -25,6 +25,7 @@ class FeedPage extends StatelessWidget {
       slivers: [
         SliverToBoxAdapter(child: _Header(wide: wide, pad: pad)),
         SliverToBoxAdapter(child: _CategoryStrip(pad: pad)),
+        if (app.newTitlesNotice > 0) SliverToBoxAdapter(child: _NewTitlesNotice(pad: pad)),
         if (noSignal)
           SliverToBoxAdapter(
             child: Padding(
@@ -155,6 +156,29 @@ class _Header extends StatelessWidget {
   }
 }
 
+/// "N new titles" after a catalog update; dismissible.
+class _NewTitlesNotice extends StatelessWidget {
+  final double pad;
+  const _NewTitlesNotice({required this.pad});
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    return Padding(
+      padding: EdgeInsets.fromLTRB(pad, 4, pad, 8),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 6, 6, 6),
+        decoration: Atlas.outline(radius: 12),
+        child: Row(children: [
+          const Icon(Icons.fiber_new_rounded, color: Atlas.accent, size: 22),
+          const SizedBox(width: 10),
+          Expanded(child: Text('${app.newTitlesNotice} new title${app.newTitlesNotice == 1 ? '' : 's'} added to the catalog', style: const TextStyle(fontSize: 13.5))),
+          IconButton(tooltip: 'Dismiss', icon: const Icon(Icons.close, size: 18), onPressed: app.dismissNewTitlesNotice),
+        ]),
+      ),
+    );
+  }
+}
+
 /// One-tap broad categories (any-of); selection is saved with the other filters.
 class _CategoryStrip extends StatelessWidget {
   final double pad;
@@ -169,6 +193,26 @@ class _CategoryStrip extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         padding: EdgeInsets.symmetric(horizontal: pad, vertical: 14),
         children: [
+          if (app.data.kinds.length > 1) ...[
+            for (final k in [null, ...const ['anime', 'movie', 'tv'].where(app.data.kinds.contains)])
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  showCheckmark: false,
+                  label: Text(k == null ? 'All media' : {'anime': 'Anime', 'movie': 'Movies', 'tv': 'TV'}[k]!),
+                  selected: k == null ? c.kinds.isEmpty : (c.kinds.length == 1 && c.kinds.contains(k)),
+                  onSelected: (_) {
+                    c.kinds.clear();
+                    if (k != null) c.kinds.add(k);
+                    app.setControls(c);
+                  },
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.only(right: 12, top: 6, bottom: 6),
+              child: Container(width: 1, color: Atlas.hair),
+            ),
+          ],
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: FilterChip(
@@ -353,7 +397,10 @@ class HeroCard extends StatelessWidget {
                         Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
                           if (rec.match > 0) _Match(rec.match, size: 96),
                           const SizedBox(width: 14),
-                          Text('MATCH  ·  ${(label ?? 'YOUR TOP PICK').toUpperCase()}', style: Atlas.kicker),
+                          Flexible(
+                            child: Text('MATCH  ·  ${(label ?? 'YOUR TOP PICK').toUpperCase()}${app.data.kinds.length > 1 ? '  ·  ${kindLabel(t.kind).toUpperCase()}' : ''}',
+                                maxLines: 1, overflow: TextOverflow.ellipsis, style: Atlas.kicker),
+                          ),
                           if (rec.gem) ...[const SizedBox(width: 14), GemBadge('hidden gem · ${members(t.popularity)}')],
                         ]),
                         const SizedBox(height: 18),
@@ -397,6 +444,7 @@ class PosterCard extends StatelessWidget {
           child: Stack(fit: StackFit.expand, children: [
             Hero(tag: 'cover${rec.idx}', child: Cover(t.cover, width: double.infinity, height: double.infinity, radius: 4)),
             if (rec.gem) Positioned(left: 10, bottom: 10, child: GemBadge('Hidden gem · ${members(t.popularity)}')),
+            if (app.data.kinds.length > 1) Positioned(left: 10, top: 10, child: KindBadge(t.kind)),
           ]),
         ),
         const SizedBox(height: 14),
@@ -496,6 +544,17 @@ class _FilterPanel extends StatelessWidget {
                 app.setControls(c, persist: true);
               },
             )),
+        if (app.data.kinds.length > 1)
+          section(
+              'Media',
+              Wrap(spacing: 8, children: [
+                for (final k in const ['anime', 'movie', 'tv'].where(app.data.kinds.contains))
+                  FilterChip(
+                    label: Text({'anime': 'Anime', 'movie': 'Movies', 'tv': 'TV'}[k]!),
+                    selected: c.kinds.contains(k),
+                    onSelected: (v) => upd(() => v ? c.kinds.add(k) : c.kinds.remove(k)),
+                  ),
+              ])),
         section(
             'Category (any of)',
             Wrap(spacing: 8, runSpacing: 4, children: [

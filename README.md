@@ -56,6 +56,10 @@ flutter build web --release --pwa-strategy=none --base-href /lodestar/
 Replace [`catalog.db`](catalog.db) in the repo root and push to `main`. CI checks that the file is valid
 (schema, titles, vocabulary), then rebuilds and redeploys the site. A bad file stops the deploy.
 
+Prefer a small push? Drop a `catalog_delta.db` (only new/changed titles, built with `tools/export.py --base catalog.db`)
+next to it: CI merges it into `catalog.db` for the build (`tools/apply_delta.py`). Fold it in whenever you like.
+The catalog holds anime today and is ready for movies and series (kind filter, TMDB-based links).
+
 ## Under the hood
 
 `lib/engine` is pure Dart and holds the whole recommender: taste vector, ridge model, hidden-gem term, MMR re-rank and the "why" text. `tools/export.py` builds the bundled `catalog.db` from a source profile database.
