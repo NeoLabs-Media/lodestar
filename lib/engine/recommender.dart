@@ -13,7 +13,7 @@ class UserEntry {
   final String? key; // stable external title key (kind + external id) used to re-link if ids change
   final EntryStatus status;
   final double? rating; // 1..10 (half steps)
-  final Set<String> reasons; // "g:romance" or "f:kind|value"
+  final Set<String> reasons; // liked: "g:romance" / "f:kind|value"; disliked: "n:romance" / "x:kind|value"
   final String note;
   final int updatedAt;
   UserEntry withKey(String? k, {int? id}) => UserEntry(
@@ -86,8 +86,10 @@ class TasteSummary {
   final List<DimPref> likes, avoids;
   final List<FacetPref> facetLikes, facetAvoids;
   final Map<String, int> reasonCounts; // label -> count
+  final List<FacetPref> dislikedTags; // tags the user explicitly flagged (strength = -times flagged)
+  final List<String> dislikedAspects; // generic aspects flagged ("Humor", "Pacing"…)
   TasteSummary(this.rated, this.meanRating, this.likes, this.avoids, this.facetLikes, this.facetAvoids,
-      this.reasonCounts);
+      this.reasonCounts, {this.dislikedTags = const [], this.dislikedAspects = const []});
 }
 
 /// Fitted user taste: everything needed to score a candidate.
@@ -98,6 +100,7 @@ class TasteModel {
   final Float32List wDim; // preference weights over standardised dims
   final Float32List wFac; // over facet vocab
   final Map<int, double> reasonFacets; // fid -> strength (explicit "what I liked")
+  final Map<int, double> avoidFacets; // fid -> how often the user flagged this tag as disliked
   final Map<int, double> comm; // idx -> community (AniList recs) score
   final Set<int> seen; // indices excluded from the feed
   final Set<int> watched;
@@ -111,6 +114,7 @@ class TasteModel {
     required this.wDim,
     required this.wFac,
     required this.reasonFacets,
+    this.avoidFacets = const {},
     required this.comm,
     required this.seen,
     required this.watched,
@@ -313,6 +317,7 @@ class Recommender {
     // --- "what I liked" boosts ------------------------------------------------
     final bDim = Float32List(D), bFac = Float32List(F);
     final reasonFacets = <int, double>{};
+    final avoidFacets = <int, double>{};
     var nReasons = 0;
     for (final e in byIdx.entries) {
       final u = e.value;
@@ -338,6 +343,20 @@ class Recommender {
           if (fid != null) {
             bFac[fid] += 1.2 * strength;
             reasonFacets[fid] = (reasonFacets[fid] ?? 0) + strength;
+          }
+        } else if (r.startsWith('n:')) {
+          // disliked aspect (independent of the rating): push the matching dimensions down
+          final g = genericReasonByKey(r.substring(2));
+          if (g == null) continue;
+          g.dims.forEach((dn, w) {
+            final di = c.dimIndex(dn);
+            if (di >= 0) bDim[di] -= 1.0 * w;
+          });
+        } else if (r.startsWith('x:')) {
+          final fid = c.facetIndex[r.substring(2)];
+          if (fid != null) {
+            bFac[fid] -= 1.5;
+            avoidFacets[fid] = math.min(3.0, (avoidFacets[fid] ?? 0) + 1);
           }
         }
       }
@@ -368,7 +387,7 @@ class Recommender {
 
     return TasteModel(
         nSignals: nSignals, mean: mean, taste: tasteVec, wDim: wDim, wFac: wFac,
-        reasonFacets: reasonFacets, comm: comm, seen: seen, watched: watched, signal: signal,
+        reasonFacets: reasonFacets, avoidFacets: avoidFacets, comm: comm, seen: seen, watched: watched, signal: signal,
         positives: positives, negatives: negatives, byIdx: byIdx);
   }
 
@@ -565,6 +584,15 @@ class Recommender {
           if (cs > mx) mx = cs;
         }
         if (mx > 0.9) pen += 0.8 * (mx - 0.9) / 0.1 + 0.3;
+      }
+      // tags the user explicitly flagged as disliked: strong, independent of how well the rest matches
+      if (m.avoidFacets.isNotEmpty) {
+        var avoid = 0.0;
+        for (final (fid, w) in c.facetsOf(i)) {
+          final a = m.avoidFacets[fid];
+          if (a != null && w >= 4) avoid += 2.4 * math.min(a, 2.0) * (w / 10).clamp(0.4, 1.0);
+        }
+        pen += math.min(avoid, 8.0) / 1.4;
       }
       // hidden-gem control: slider centred at ~0.35, matters only for decent matches
       final matchZ = m.hasSignal ? (base / 1.9) : 0.0;
@@ -831,8 +859,17 @@ class Recommender {
     fl.sort((a, b) => b.strength.compareTo(a.strength));
     fa.sort((a, b) => a.strength.compareTo(b.strength));
     final rc = <String, int>{};
+    final xCounts = <String, int>{}, nCounts = <String>{};
     for (final e in m.byIdx.values) {
       for (final r in e.reasons) {
+        if (r.startsWith('x:')) {
+          xCounts[r.substring(2)] = (xCounts[r.substring(2)] ?? 0) + 1;
+          continue;
+        }
+        if (r.startsWith('n:')) {
+          nCounts.add(genericReasonByKey(r.substring(2))?.label ?? r);
+          continue;
+        }
         String label;
         if (r.startsWith('g:')) {
           label = genericReasonByKey(r.substring(2))?.label ?? r;
@@ -843,8 +880,14 @@ class Recommender {
         rc[label] = (rc[label] ?? 0) + 1;
       }
     }
+    final disliked = <FacetPref>[];
+    xCounts.forEach((k, n) {
+      final parts = k.split('|');
+      if (parts.length == 2) disliked.add(FacetPref(parts[0], parts[1], -n.toDouble(), n));
+    });
+    disliked.sort((a, b) => a.strength.compareTo(b.strength));
     return TasteSummary(rated, meanR, likes.take(8).toList(), avoids.take(6).toList(),
-        fl.take(14).toList(), fa.take(8).toList(), rc);
+        fl.take(14).toList(), fa.take(8).toList(), rc, dislikedTags: disliked, dislikedAspects: nCounts.toList()..sort());
   }
 
   (double, double) _meanStd(Float32List a) {

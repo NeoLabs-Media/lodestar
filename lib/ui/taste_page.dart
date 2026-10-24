@@ -58,6 +58,18 @@ class TastePage extends StatelessWidget {
                             ),
                         ]),
                       ],
+                      if (s.dislikedTags.isNotEmpty || s.dislikedAspects.isNotEmpty) ...[
+                        _h(context, 'Tags you flagged as dislikes'),
+                        Wrap(spacing: 8, runSpacing: 6, children: [
+                          for (final f in s.dislikedTags)
+                            Chip(
+                              avatar: Icon(Icons.block_rounded, size: 14, color: cs.error),
+                              label: Text(facetChipLabel(f.kind, f.value)),
+                            ),
+                          for (final a in s.dislikedAspects)
+                            Chip(avatar: Icon(Icons.block_rounded, size: 14, color: cs.error), label: Text(a)),
+                        ]),
+                      ],
                       if (s.reasonCounts.isNotEmpty) ...[
                         _h(context, 'What you say you like most'),
                         Wrap(spacing: 8, runSpacing: 6, children: [

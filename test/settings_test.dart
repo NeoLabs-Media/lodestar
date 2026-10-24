@@ -18,6 +18,7 @@ void main() {
 
   test('backup round-trips and merge/replace work', () async {
     final d = Directory.systemTemp.createTempSync('atlas_bk');
+    addTearDown(() => d.deleteSync(recursive: true));
     final a = await fresh(d);
     a.rate(3, rating: 9, reasons: {'g:romance', 'f:ending_types|bittersweet'}, note: 'great');
     a.setStatus(5, EntryStatus.ignored);
@@ -36,6 +37,7 @@ void main() {
 
   test('catalog: URL auto-update (ETag), gzip, bad file rejected, reset', timeout: const Timeout(Duration(minutes: 3)), () async {
     final d = Directory.systemTemp.createTempSync('atlas_cat');
+    addTearDown(() => d.deleteSync(recursive: true));
     final a = await fresh(d);
     a.rate(3, rating: 8);
     final bundled = File('catalog.db');
@@ -95,6 +97,7 @@ void main() {
 void filterPersistenceTest() {
   test('filters persist across restarts', () async {
     final d = Directory.systemTemp.createTempSync('atlas_flt');
+    addTearDown(() => d.deleteSync(recursive: true));
     final a = AppState();
     await a.init(supportDirOverride: d.path);
     a.setControls(a.controls

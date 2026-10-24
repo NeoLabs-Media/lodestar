@@ -145,14 +145,14 @@ class _RatingTourPageState extends State<RatingTourPage> {
           child: Text('= $rating / 10', style: TextStyle(color: cs.primary, fontWeight: FontWeight.w700)),
         ),
       const SizedBox(height: 16),
-      Text('What did you like? (optional)', style: tt.titleSmall),
+      Text('What did you like — or not? (tap once = like, twice = dislike)', style: tt.titleSmall),
       const SizedBox(height: 8),
       Wrap(spacing: 8, runSpacing: 6, children: [
         for (final g in genericReasons)
-          FilterChip(
-            label: Text(g.label),
-            selected: reasons.contains('g:${g.key}'),
-            onSelected: (v) => setState(() => v ? reasons.add('g:${g.key}') : reasons.remove('g:${g.key}')),
+          ReasonChip(
+            label: g.label,
+            state: reasonState(reasons, 'g:${g.key}'),
+            onTap: () => setState(() => cycleReason(reasons, 'g:${g.key}')),
           ),
       ]),
       if (specific.isNotEmpty) ...[
@@ -161,10 +161,10 @@ class _RatingTourPageState extends State<RatingTourPage> {
         const SizedBox(height: 8),
         Wrap(spacing: 8, runSpacing: 6, children: [
           for (final (key, label) in specific)
-            FilterChip(
-              label: Text(label),
-              selected: reasons.contains(key),
-              onSelected: (v) => setState(() => v ? reasons.add(key) : reasons.remove(key)),
+            ReasonChip(
+              label: label,
+              state: reasonState(reasons, key),
+              onTap: () => setState(() => cycleReason(reasons, key)),
             ),
         ]),
       ],

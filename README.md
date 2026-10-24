@@ -16,7 +16,7 @@
 
 | | |
 |---|---|
-| **It asks *why*** | Rate a title, then tap what worked: *slow-burn romance*, *bittersweet ending*, *found family*… those taps steer your feed. |
+| **It asks *why*** | Rate a title, then tap what worked: *slow-burn romance*, *bittersweet ending*, *found family*… Tap twice to **dislike** a tag instead (even on a show you loved) and it vanishes from your feed. |
 | **Hidden gems on a dial** | One switch takes you from popular picks to deep cuts. Every card explains itself: "like *Your Lie in April*, which you rated 9.5". |
 | **Private by design** | No account, no server, no tracking, no AI calls. Your ratings live on your device (or in your browser). |
 
