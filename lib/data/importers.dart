@@ -10,7 +10,8 @@ import '../engine/search.dart';
 
 class ImportResult {
   final List<UserEntry> entries = [];
-  final Map<int, String> hints = {}; // catalog idx -> e.g. "12 episodes on Crunchyroll"
+  final Map<int, String> hints =
+      {}; // catalog idx -> e.g. "12 episodes on Crunchyroll"
   final List<String> unmatched = [];
   int get matched => entries.length;
 }
@@ -19,7 +20,9 @@ class ImportResult {
 ImportResult parsePastedList(String text, CatalogData c, TitleSearch search) {
   final res = ImportResult();
   final seen = <int>{};
-  final re = RegExp(r'^(.*?)(?:\s*[-–—:|,;]\s*|\s+)(10|\d(?:[.,]5)?)\s*(?:/\s*10)?\s*$');
+  final re = RegExp(
+    r'^(.*?)(?:\s*[-–—:|,;]\s*|\s+)(10|\d(?:[.,]5)?)\s*(?:/\s*10)?\s*$',
+  );
   for (var line in const LineSplitter().convert(text)) {
     line = line.trim().replaceAll(RegExp(r'^[\-*•\d]+[.)]\s+'), '');
     if (line.isEmpty) continue;
@@ -38,7 +41,13 @@ ImportResult parsePastedList(String text, CatalogData c, TitleSearch search) {
     if (idx == null) {
       res.unmatched.add(line);
     } else if (seen.add(idx)) {
-      res.entries.add(UserEntry(id: c.titles[idx].id, status: EntryStatus.watched, rating: rating));
+      res.entries.add(
+        UserEntry(
+          id: c.titles[idx].id,
+          status: EntryStatus.watched,
+          rating: rating,
+        ),
+      );
     }
   }
   return res;
@@ -53,7 +62,7 @@ ImportResult parseMalXml(List<int> bytes, CatalogData c, TitleSearch search) {
   final res = ImportResult();
   final byMal = {
     for (final t in c.titles)
-      if (t.mal != null) t.mal!: t.idx
+      if (t.mal != null) t.mal!: t.idx,
   };
   final seen = <int>{};
   for (final a in doc.findAllElements('anime')) {
@@ -73,9 +82,21 @@ ImportResult parseMalXml(List<int> bytes, CatalogData c, TitleSearch search) {
     if (status.contains('plan')) {
       res.entries.add(UserEntry(id: id, status: EntryStatus.planned));
     } else if (status.contains('drop')) {
-      res.entries.add(UserEntry(id: id, status: EntryStatus.watched, rating: score > 0 ? score : 4));
+      res.entries.add(
+        UserEntry(
+          id: id,
+          status: EntryStatus.watched,
+          rating: score > 0 ? score : 4,
+        ),
+      );
     } else {
-      res.entries.add(UserEntry(id: id, status: EntryStatus.watched, rating: score > 0 ? score : null));
+      res.entries.add(
+        UserEntry(
+          id: id,
+          status: EntryStatus.watched,
+          rating: score > 0 ? score : null,
+        ),
+      );
     }
   }
   return res;
@@ -83,8 +104,13 @@ ImportResult parseMalXml(List<int> bytes, CatalogData c, TitleSearch search) {
 
 /// Crunchyroll exports: crunchyexporter-cli writes a MAL-style XML (`data/animelist.xml`) and
 /// `data/history.json`; this also accepts any JSON/CSV/text with series titles.
-ImportResult parseAnyImport(List<int> bytes, CatalogData c, TitleSearch search) {
-  if (bytes.length > 2 && bytes[0] == 0x1f && bytes[1] == 0x8b) bytes = GZipDecoder().decodeBytes(bytes);
+ImportResult parseAnyImport(
+  List<int> bytes,
+  CatalogData c,
+  TitleSearch search,
+) {
+  if (bytes.length > 2 && bytes[0] == 0x1f && bytes[1] == 0x8b)
+    bytes = GZipDecoder().decodeBytes(bytes);
   final text = utf8.decode(bytes, allowMalformed: true).trimLeft();
   if (text.startsWith('<')) return parseMalXml(bytes, c, search);
   final titles = <String>[];
@@ -106,7 +132,11 @@ ImportResult parseAnyImport(List<int> bytes, CatalogData c, TitleSearch search) 
       }
       titles.add(l);
     }
-    if (titles.isNotEmpty && RegExp(r'^(series|title|name)', caseSensitive: false).hasMatch(titles.first)) {
+    if (titles.isNotEmpty &&
+        RegExp(
+          r'^(series|title|name)',
+          caseSensitive: false,
+        ).hasMatch(titles.first)) {
       titles.removeAt(0);
     }
   }
@@ -117,7 +147,9 @@ ImportResult parseAnyImport(List<int> bytes, CatalogData c, TitleSearch search) 
     if (idx == null) {
       res.unmatched.add(t);
     } else if (seen.add(idx)) {
-      res.entries.add(UserEntry(id: c.titles[idx].id, status: EntryStatus.watched));
+      res.entries.add(
+        UserEntry(id: c.titles[idx].id, status: EntryStatus.watched),
+      );
     }
   }
   return res;
@@ -129,11 +161,21 @@ void _collectTitles(dynamic node, List<String> out) {
     node.forEach((k, v) {
       final key = k.toString().toLowerCase();
       if (v is String && v.trim().isNotEmpty) {
-        if (key == 'series_title' || key == 'seriestitle' || key == 'series_name' || key == 'show' || key == 'show_title') {
+        if (key == 'series_title' ||
+            key == 'seriestitle' ||
+            key == 'series_name' ||
+            key == 'show' ||
+            key == 'show_title') {
           best = v;
-        } else if (best == null && (key == 'title' || key == 'name') && node.keys.any((x) => x.toString().toLowerCase().contains('series') || x.toString().toLowerCase().contains('episode'))) {
+        } else if (best == null &&
+            (key == 'title' || key == 'name') &&
+            node.keys.any(
+              (x) =>
+                  x.toString().toLowerCase().contains('series') ||
+                  x.toString().toLowerCase().contains('episode'),
+            )) {
           best = null; // episode-level title: ignore unless a series key exists
-        } else if (key == 'series' ) {
+        } else if (key == 'series') {
           best = v;
         }
       } else if (v is Map && key.contains('series')) {
@@ -153,7 +195,11 @@ void _collectTitles(dynamic node, List<String> out) {
 }
 
 /// Series from the in-app Crunchyroll history -> unrated watched entries (+ hints for the tour).
-ImportResult parseCrunchyrollSeries(List<CrSeries> series, CatalogData c, TitleSearch search) {
+ImportResult parseCrunchyrollSeries(
+  List<CrSeries> series,
+  CatalogData c,
+  TitleSearch search,
+) {
   final res = ImportResult();
   final seen = <int>{};
   for (final s in series) {
@@ -161,9 +207,14 @@ ImportResult parseCrunchyrollSeries(List<CrSeries> series, CatalogData c, TitleS
     if (idx == null) {
       res.unmatched.add(s.title);
     } else if (seen.add(idx)) {
-      res.entries.add(UserEntry(id: c.titles[idx].id, status: EntryStatus.watched));
-      final last = s.lastWatched == null ? '' : ', last ${s.lastWatched!.substring(0, 10)}';
-      res.hints[idx] = 'Crunchyroll: ${s.episodes} episode${s.episodes == 1 ? '' : 's'} watched$last';
+      res.entries.add(
+        UserEntry(id: c.titles[idx].id, status: EntryStatus.watched),
+      );
+      final last = s.lastWatched == null
+          ? ''
+          : ', last ${s.lastWatched!.substring(0, 10)}';
+      res.hints[idx] =
+          'Crunchyroll: ${s.episodes} episode${s.episodes == 1 ? '' : 's'} watched$last';
     }
   }
   return res;

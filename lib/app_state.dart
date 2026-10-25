@@ -31,8 +31,10 @@ class AppState extends ChangeNotifier {
   String? error;
 
   final Map<int, UserEntry> entries = {}; // by catalog idx
-  List<CrSeries>? pendingCrSeries; // from the web bookmarklet, awaiting the user's OK
-  final Map<int, String> importHints = {}; // transient, shown in the rating tour
+  List<CrSeries>?
+  pendingCrSeries; // from the web bookmarklet, awaiting the user's OK
+  final Map<int, String> importHints =
+      {}; // transient, shown in the rating tour
   Controls controls = Controls();
   TasteModel? model;
   List<Rec> feed = [];
@@ -53,7 +55,8 @@ class AppState extends ChangeNotifier {
   String backupError = '';
   String lastAutoBackup = '';
 
-  File get _customFile => File(p.join(dir.path, 'catalog_custom.db'));  // native only
+  File get _customFile =>
+      File(p.join(dir.path, 'catalog_custom.db')); // native only
 
   Future<void> init({String? supportDirOverride}) async {
     try {
@@ -61,19 +64,24 @@ class AppState extends ChangeNotifier {
         users = UserStore.open('');
         catalogSource = 'bundled';
         final bytes = await rootBundle.load('catalog.db');
-        final opened = await CatalogStore.openBytes(bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes));
+        final opened = await CatalogStore.openBytes(
+          bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes),
+        );
         _attach(opened);
         _loadControls();
         try {
           final pending = takePendingImport();
-          if (pending != null) pendingCrSeries = parseBookmarkletPayload(pending);
+          if (pending != null)
+            pendingCrSeries = parseBookmarkletPayload(pending);
         } catch (_) {}
         ready = true;
         notifyListeners();
         await refresh();
         return;
       }
-      dir = supportDirOverride != null ? Directory(supportDirOverride) : await getApplicationSupportDirectory();
+      dir = supportDirOverride != null
+          ? Directory(supportDirOverride)
+          : await getApplicationSupportDirectory();
       await dir.create(recursive: true);
       users = UserStore.open(p.join(dir.path, 'user.db'));
       catalogSource = users.setting('catalog_source') ?? 'bundled';
@@ -84,7 +92,8 @@ class AppState extends ChangeNotifier {
         try {
           opened = CatalogStore.open(_customFile.path);
         } catch (e) {
-          catalogStatus = 'Custom database could not be opened ($e) — using the bundled one.';
+          catalogStatus =
+              'Custom database could not be opened ($e) — using the bundled one.';
           catalogSource = 'bundled';
           users.setSetting('catalog_source', 'bundled');
         }
@@ -109,9 +118,14 @@ class AppState extends ChangeNotifier {
     final version = (await rootBundle.loadString('catalog.version')).trim();
     final dbFile = File(p.join(dir.path, 'catalog.db'));
     final verFile = File(p.join(dir.path, 'catalog.version'));
-    if (!await dbFile.exists() || !await verFile.exists() || (await verFile.readAsString()).trim() != version) {
+    if (!await dbFile.exists() ||
+        !await verFile.exists() ||
+        (await verFile.readAsString()).trim() != version) {
       final bytes = await rootBundle.load('catalog.db');
-      await dbFile.writeAsBytes(bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes), flush: true);
+      await dbFile.writeAsBytes(
+        bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes),
+        flush: true,
+      );
       await verFile.writeAsString(version);
     }
     return CatalogStore.open(dbFile.path);
@@ -161,11 +175,14 @@ class AppState extends ChangeNotifier {
   /// Validates [candidate] (must be a catalog.db built by tools/export.py), then makes it the
   /// active catalog. The user's data is untouched.
   Future<void> _installCatalog(File candidate, String source) async {
-    final test = CatalogStore.open(candidate.path); // throws when it is not a valid catalog
+    final test = CatalogStore.open(
+      candidate.path,
+    ); // throws when it is not a valid catalog
     final schema = int.tryParse(test.data.meta['schema'] ?? '') ?? 0;
     final n = test.data.n;
     test.close();
-    if (schema < 1 || schema > supportedSchema) throw FormatException('Unsupported catalog schema "$schema".');
+    if (schema < 1 || schema > supportedSchema)
+      throw FormatException('Unsupported catalog schema "$schema".');
     if (n == 0) throw const FormatException('The catalog contains no titles.');
     final old = store;
     await candidate.rename(_customFile.path);
@@ -209,7 +226,9 @@ class AppState extends ChangeNotifier {
 
   /// Merges a catalog_delta into the installed catalog file (the user's data is never touched).
   Future<DeltaResult> _applyDelta(File deltaFile) async {
-    final path = catalogSource == 'bundled' ? p.join(dir.path, 'catalog.db') : _customFile.path;
+    final path = catalogSource == 'bundled'
+        ? p.join(dir.path, 'catalog.db')
+        : _customFile.path;
     store.close(); // release the read handle before writing
     DeltaResult? res;
     Object? failure;
@@ -257,7 +276,9 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _copyMaybeGzip(File from, File to) async {
-    final head = await from.openRead(0, 2).fold<List<int>>([], (a, b) => a..addAll(b));
+    final head = await from
+        .openRead(0, 2)
+        .fold<List<int>>([], (a, b) => a..addAll(b));
     if (head.length == 2 && head[0] == 0x1f && head[1] == 0x8b) {
       await from.openRead().transform(gzip.decoder).pipe(to.openWrite());
     } else {
@@ -290,7 +311,8 @@ class AppState extends ChangeNotifier {
     final client = http.Client();
     try {
       final req = http.Request('GET', uri);
-      final etag = users.setting('catalog_etag') ?? '', lastmod = users.setting('catalog_lastmod') ?? '';
+      final etag = users.setting('catalog_etag') ?? '',
+          lastmod = users.setting('catalog_lastmod') ?? '';
       if (!force) {
         if (etag.isNotEmpty) req.headers['If-None-Match'] = etag;
         if (lastmod.isNotEmpty) req.headers['If-Modified-Since'] = lastmod;
@@ -306,8 +328,13 @@ class AppState extends ChangeNotifier {
         return;
       }
       final len = resp.contentLength;
-      final newEtag = resp.headers['etag'] ?? '', newMod = resp.headers['last-modified'] ?? '';
-      if (!force && newEtag.isEmpty && newMod.isEmpty && len != null && '$len' == (users.setting('catalog_len') ?? '')) {
+      final newEtag = resp.headers['etag'] ?? '',
+          newMod = resp.headers['last-modified'] ?? '';
+      if (!force &&
+          newEtag.isEmpty &&
+          newMod.isEmpty &&
+          len != null &&
+          '$len' == (users.setting('catalog_len') ?? '')) {
         await resp.stream.listen(null).cancel();
         _status('Database is up to date (same size as the installed one).');
         return;
@@ -318,7 +345,10 @@ class AppState extends ChangeNotifier {
       await for (final chunk in resp.stream) {
         sink.add(chunk);
         got += chunk.length;
-        _status('Downloading… ${(got / 1e6).toStringAsFixed(1)} MB', progress: len == null || len == 0 ? null : got / len);
+        _status(
+          'Downloading… ${(got / 1e6).toStringAsFixed(1)} MB',
+          progress: len == null || len == 0 ? null : got / len,
+        );
       }
       await sink.close();
       final tmp = File(p.join(dir.path, 'catalog_incoming.db'));
@@ -353,7 +383,9 @@ class AppState extends ChangeNotifier {
       users.setSetting('catalog_source', 'bundled');
       setCatalogUrl('');
       await refresh();
-      _status('Using the bundled database: ${data.n} titles, built ${data.meta['built_at']}.');
+      _status(
+        'Using the bundled database: ${data.n} titles, built ${data.meta['built_at']}.',
+      );
     } catch (e) {
       _status('Could not reset: $e');
     } finally {
@@ -365,7 +397,11 @@ class AppState extends ChangeNotifier {
   String? get lastChecked => users.setting('catalog_checked');
 
   // --- backup -------------------------------------------------------------------
-  String exportBackup() => buildBackup(users.all(), data, settings: {'obscurity': controls.obscurity.toStringAsFixed(3)});
+  String exportBackup() => buildBackup(
+    users.all(),
+    data,
+    settings: {'obscurity': controls.obscurity.toStringAsFixed(3)},
+  );
 
   /// Restores a backup file's content. [replace] wipes the current library first.
   RestoreResult restoreBackup(String json, {required bool replace}) {
@@ -382,7 +418,8 @@ class AppState extends ChangeNotifier {
     return res;
   }
 
-  Directory get backupDir => kIsWeb ? Directory('') : Directory(p.join(dir.path, 'backups'));
+  Directory get backupDir =>
+      kIsWeb ? Directory('') : Directory(p.join(dir.path, 'backups'));
 
   /// One rolling backup per day (last 14 kept) so a mistake never loses a library.
   void _dailyBackup() {
@@ -394,8 +431,13 @@ class AppState extends ChangeNotifier {
       final f = File(p.join(backupDir.path, 'auto-backup-$day.json'));
       if (!f.existsSync()) f.writeAsStringSync(exportBackup());
       lastAutoBackup = day;
-      final all = backupDir.listSync().whereType<File>().where((x) => x.path.contains('auto-backup-')).toList()
-        ..sort((a, b) => a.path.compareTo(b.path));
+      final all =
+          backupDir
+              .listSync()
+              .whereType<File>()
+              .where((x) => x.path.contains('auto-backup-'))
+              .toList()
+            ..sort((a, b) => a.path.compareTo(b.path));
       for (final old in all.take(all.length > 14 ? all.length - 14 : 0)) {
         old.deleteSync();
       }
@@ -412,13 +454,20 @@ class AppState extends ChangeNotifier {
   }
 
   UserEntry? entryOf(int idx) => entries[idx];
-  int get watchedCount => entries.values.where((e) => e.status == EntryStatus.watched).length;
-  int get ratedCount =>
-      entries.values.where((e) => e.status == EntryStatus.watched && e.rating != null).length;
+  int get watchedCount =>
+      entries.values.where((e) => e.status == EntryStatus.watched).length;
+  int get ratedCount => entries.values
+      .where((e) => e.status == EntryStatus.watched && e.rating != null)
+      .length;
 
   // --- mutations ---
-  void rate(int idx,
-      {double? rating, Set<String> reasons = const {}, String note = '', bool recompute = true}) {
+  void rate(
+    int idx, {
+    double? rating,
+    Set<String> reasons = const {},
+    String note = '',
+    bool recompute = true,
+  }) {
     final e = UserEntry(
       id: data.titles[idx].id,
       key: data.titles[idx].key,
@@ -439,10 +488,15 @@ class AppState extends ChangeNotifier {
 
   /// Watched titles still without a rating (e.g. after an import), most popular first.
   List<int> unratedWatched() {
-    final l = [
-      for (final e in entries.entries)
-        if (e.value.status == EntryStatus.watched && e.value.rating == null) e.key
-    ]..sort((a, b) => data.titles[b].popularity.compareTo(data.titles[a].popularity));
+    final l =
+        [
+          for (final e in entries.entries)
+            if (e.value.status == EntryStatus.watched && e.value.rating == null)
+              e.key,
+        ]..sort(
+          (a, b) =>
+              data.titles[b].popularity.compareTo(data.titles[a].popularity),
+        );
     return l;
   }
 
@@ -484,11 +538,24 @@ class AppState extends ChangeNotifier {
       final i = data.idToIdx[e.id];
       if (i == null) continue;
       final old = entries[i];
-      if (old != null && old.status == EntryStatus.ignored) continue; // ignored stays ignored on re-import
-      if (old != null && old.status == EntryStatus.watched && e.status == EntryStatus.watched && old.rating != null && e.rating == null) {
+      if (old != null && old.status == EntryStatus.ignored)
+        continue; // ignored stays ignored on re-import
+      if (old != null &&
+          old.status == EntryStatus.watched &&
+          e.status == EntryStatus.watched &&
+          old.rating != null &&
+          e.rating == null) {
         continue; // never overwrite a real rating with "unrated"
       }
-      final ne = UserEntry(id: e.id, key: data.titles[i].key, status: e.status, rating: e.rating, reasons: e.reasons, note: e.note, updatedAt: now);
+      final ne = UserEntry(
+        id: e.id,
+        key: data.titles[i].key,
+        status: e.status,
+        rating: e.rating,
+        reasons: e.reasons,
+        note: e.note,
+        updatedAt: now,
+      );
       entries[i] = ne;
       toSave.add(ne);
     }
@@ -506,23 +573,25 @@ class AppState extends ChangeNotifier {
   void saveControls() {
     final c = controls;
     users.setSetting(
-        'filters',
-        jsonEncode({
-          'obscurity': c.obscurity,
-          'formats': c.formats.toList(),
-          'maxEpisodes': c.maxEpisodes,
-          'moods': c.moods.toList(),
-          'excludeWarnings': c.excludeWarnings.toList(),
-          'categories': c.categories.toList(),
-          'kinds': c.kinds.toList(),
-          'minYear': c.minYear,
-        }));
+      'filters',
+      jsonEncode({
+        'obscurity': c.obscurity,
+        'formats': c.formats.toList(),
+        'maxEpisodes': c.maxEpisodes,
+        'moods': c.moods.toList(),
+        'excludeWarnings': c.excludeWarnings.toList(),
+        'categories': c.categories.toList(),
+        'kinds': c.kinds.toList(),
+        'minYear': c.minYear,
+      }),
+    );
     users.setSetting('obscurity', c.obscurity.toStringAsFixed(3));
   }
 
   void _loadControls() {
     final saved = users.setting('obscurity');
-    if (saved != null) controls.obscurity = double.tryParse(saved) ?? controls.obscurity;
+    if (saved != null)
+      controls.obscurity = double.tryParse(saved) ?? controls.obscurity;
     final raw = users.setting('filters');
     if (raw == null) return;
     try {
@@ -532,8 +601,12 @@ class AppState extends ChangeNotifier {
         formats: ((m['formats'] as List?) ?? const []).cast<String>().toSet(),
         maxEpisodes: m['maxEpisodes'] as int?,
         moods: ((m['moods'] as List?) ?? const []).cast<String>().toSet(),
-        excludeWarnings: ((m['excludeWarnings'] as List?) ?? const []).cast<String>().toSet(),
-        categories: ((m['categories'] as List?) ?? const []).cast<String>().toSet(),
+        excludeWarnings: ((m['excludeWarnings'] as List?) ?? const [])
+            .cast<String>()
+            .toSet(),
+        categories: ((m['categories'] as List?) ?? const [])
+            .cast<String>()
+            .toSet(),
         kinds: ((m['kinds'] as List?) ?? const []).cast<String>().toSet(),
         minYear: m['minYear'] as int?,
       );
@@ -564,7 +637,9 @@ class AppState extends ChangeNotifier {
     final seq = ++_seq;
     computing = true;
     notifyListeners();
-    await Future<void>.delayed(const Duration(milliseconds: 16)); // let the UI paint first
+    await Future<void>.delayed(
+      const Duration(milliseconds: 16),
+    ); // let the UI paint first
     model = recommender.fit([for (final e in entries.values) e]);
     final result = recommender.recommend(model!, controls, count: 60);
     if (seq != _seq) return;
@@ -573,12 +648,17 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  TasteSummary summary() => recommender.summarize(model ?? recommender.fit(entries.values.toList()));
+  TasteSummary summary() =>
+      recommender.summarize(model ?? recommender.fit(entries.values.toList()));
 
   Rec? surprise() {
     final m = model;
     if (m == null) return null;
-    return recommender.surprise(m, controls, seed: DateTime.now().microsecondsSinceEpoch);
+    return recommender.surprise(
+      m,
+      controls,
+      seed: DateTime.now().microsecondsSinceEpoch,
+    );
   }
 
   Rec? explainFor(int idx) {
@@ -596,13 +676,13 @@ class AppState extends ChangeNotifier {
 
   /// Export of the user's data (for backup).
   String exportJson() => jsonEncode([
-        for (final e in entries.values)
-          {
-            'id': e.id,
-            'status': e.status.name,
-            'rating': e.rating,
-            'reasons': e.reasons.toList(),
-            'note': e.note,
-          }
-      ]);
+    for (final e in entries.values)
+      {
+        'id': e.id,
+        'status': e.status.name,
+        'rating': e.rating,
+        'reasons': e.reasons.toList(),
+        'note': e.note,
+      },
+  ]);
 }

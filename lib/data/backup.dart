@@ -8,7 +8,11 @@ const backupFormat = 'lodestar-backup';
 
 /// Portable JSON backup of everything the user entered. Titles carry their AniList/MAL ids and
 /// names too, so a backup still restores if the catalog is later swapped for one with other ids.
-String buildBackup(List<UserEntry> entries, CatalogData c, {Map<String, String> settings = const {}}) {
+String buildBackup(
+  List<UserEntry> entries,
+  CatalogData c, {
+  Map<String, String> settings = const {},
+}) {
   final rows = <Map<String, dynamic>>[];
   for (final e in entries) {
     final i = c.idToIdx[e.id];
@@ -48,14 +52,19 @@ RestoreResult parseBackup(String json, CatalogData c, TitleSearch search) {
     throw const FormatException('This is not an Lodestar backup file.');
   }
   final res = RestoreResult();
-  res.settings = {for (final e in ((m['settings'] as Map?) ?? {}).entries) '${e.key}': '${e.value}'};
+  res.settings = {
+    for (final e in ((m['settings'] as Map?) ?? {}).entries)
+      '${e.key}': '${e.value}',
+  };
   final byAnilist = c.anilistToIdx;
   final byMal = {
     for (final t in c.titles)
-      if (t.mal != null) t.mal!: t.idx
+      if (t.mal != null) t.mal!: t.idx,
   };
   for (final r in (m['entries'] as List).cast<Map>()) {
-    int? idx = r['key'] == null ? null : c.keyToIdx['${r['key']}']; // stable key first, ids can be renumbered
+    int? idx = r['key'] == null
+        ? null
+        : c.keyToIdx['${r['key']}']; // stable key first, ids can be renumbered
     idx ??= c.idToIdx[r['id']];
     idx ??= r['anilist'] == null ? null : byAnilist[r['anilist']];
     idx ??= r['mal'] == null ? null : byMal[r['mal']];
@@ -64,15 +73,20 @@ RestoreResult parseBackup(String json, CatalogData c, TitleSearch search) {
       res.unmatched.add('${r['title'] ?? r['id']}');
       continue;
     }
-    res.entries.add(UserEntry(
-      id: c.titles[idx].id,
-      key: c.titles[idx].key,
-      status: EntryStatus.values.firstWhere((s) => s.name == r['status'], orElse: () => EntryStatus.watched),
-      rating: (r['rating'] as num?)?.toDouble(),
-      reasons: ((r['reasons'] as List?) ?? const []).cast<String>().toSet(),
-      note: '${r['note'] ?? ''}',
-      updatedAt: (r['updated_at'] as num?)?.toInt() ?? 0,
-    ));
+    res.entries.add(
+      UserEntry(
+        id: c.titles[idx].id,
+        key: c.titles[idx].key,
+        status: EntryStatus.values.firstWhere(
+          (s) => s.name == r['status'],
+          orElse: () => EntryStatus.watched,
+        ),
+        rating: (r['rating'] as num?)?.toDouble(),
+        reasons: ((r['reasons'] as List?) ?? const []).cast<String>().toSet(),
+        note: '${r['note'] ?? ''}',
+        updatedAt: (r['updated_at'] as num?)?.toInt() ?? 0,
+      ),
+    );
   }
   return res;
 }

@@ -15,7 +15,12 @@ import 'ui/theme.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   WidgetsBinding.instance.addPostFrameCallback((_) => removeSplash());
-  runApp(ChangeNotifierProvider(create: (_) => AppState()..init(), child: const LodestarApp()));
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => AppState()..init(),
+      child: const LodestarApp(),
+    ),
+  );
 }
 
 class LodestarApp extends StatelessWidget {
@@ -48,16 +53,26 @@ class _HomeState extends State<Home> {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     if (app.error != null) {
-      return Scaffold(body: Center(child: Padding(padding: const EdgeInsets.all(24), child: SelectableText('Failed to start:\n${app.error}'))));
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: SelectableText('Failed to start:\n${app.error}'),
+          ),
+        ),
+      );
     }
     if (!app.ready) {
       return const Scaffold(
         body: Center(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('Loading Lodestar…'),
-          ]),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Loading Lodestar…'),
+            ],
+          ),
         ),
       );
     }
@@ -71,16 +86,25 @@ class _HomeState extends State<Home> {
           context: context,
           builder: (_) => AlertDialog(
             title: const Text('Import from Crunchyroll?'),
-            content: Text('Your bookmark found ${series.length} series in your Crunchyroll history. '
-                'Add them as watched and rate them one by one?'),
+            content: Text(
+              'Your bookmark found ${series.length} series in your Crunchyroll history. '
+              'Add them as watched and rate them one by one?',
+            ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Not now')),
-              FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Import')),
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Not now'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Import'),
+              ),
             ],
           ),
         );
         // ignore: use_build_context_synchronously
-        if (ok == true && mounted) await importCrunchyrollSeries(context, app, series);
+        if (ok == true && mounted)
+          await importCrunchyrollSeries(context, app, series);
       });
     }
     final pages = [
@@ -96,31 +120,55 @@ class _HomeState extends State<Home> {
       (Icons.insights_outlined, Icons.insights, 'Taste'),
       (Icons.settings_outlined, Icons.settings, 'Settings'),
     ];
-    final body = AnimatedSwitcher(duration: const Duration(milliseconds: 200), child: KeyedSubtree(key: ValueKey(tab), child: pages[tab]));
+    final body = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 200),
+      child: KeyedSubtree(key: ValueKey(tab), child: pages[tab]),
+    );
     if (wide) {
       return Scaffold(
-        body: Row(children: [
-          NavigationRail(
-            selectedIndex: tab,
-            minWidth: 76,
-            labelType: NavigationRailLabelType.none,
-            onDestinationSelected: (i) => setState(() => tab = i),
-            leading: const Padding(padding: EdgeInsets.only(top: 22, bottom: 30), child: AtlasMark(size: 26)),
-            destinations: [for (final d in dests) NavigationRailDestination(icon: Icon(d.$1), selectedIcon: Icon(d.$2), label: Text(d.$3))],
-          ),
-          const VerticalDivider(width: 1),
-          Expanded(child: body),
-        ]),
+        body: Row(
+          children: [
+            NavigationRail(
+              selectedIndex: tab,
+              minWidth: 76,
+              labelType: NavigationRailLabelType.none,
+              onDestinationSelected: (i) => setState(() => tab = i),
+              leading: const Padding(
+                padding: EdgeInsets.only(top: 22, bottom: 30),
+                child: AtlasMark(size: 26),
+              ),
+              destinations: [
+                for (final d in dests)
+                  NavigationRailDestination(
+                    icon: Icon(d.$1),
+                    selectedIcon: Icon(d.$2),
+                    label: Text(d.$3),
+                  ),
+              ],
+            ),
+            const VerticalDivider(width: 1),
+            Expanded(child: body),
+          ],
+        ),
       );
     }
     return Scaffold(
       body: SafeArea(bottom: false, child: body),
       bottomNavigationBar: DecoratedBox(
-        decoration: const BoxDecoration(border: Border(top: BorderSide(color: Atlas.hair))),
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: Atlas.hair)),
+        ),
         child: NavigationBar(
-        selectedIndex: tab,
-        onDestinationSelected: (i) => setState(() => tab = i),
-        destinations: [for (final d in dests) NavigationDestination(icon: Icon(d.$1), selectedIcon: Icon(d.$2), label: d.$3)],
+          selectedIndex: tab,
+          onDestinationSelected: (i) => setState(() => tab = i),
+          destinations: [
+            for (final d in dests)
+              NavigationDestination(
+                icon: Icon(d.$1),
+                selectedIcon: Icon(d.$2),
+                label: d.$3,
+              ),
+          ],
         ),
       ),
     );
@@ -132,7 +180,8 @@ class AtlasMark extends StatelessWidget {
   final double size;
   const AtlasMark({super.key, this.size = 24});
   @override
-  Widget build(BuildContext context) => CustomPaint(size: Size.square(size), painter: _MarkPainter());
+  Widget build(BuildContext context) =>
+      CustomPaint(size: Size.square(size), painter: _MarkPainter());
 }
 
 class _MarkPainter extends CustomPainter {

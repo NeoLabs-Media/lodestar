@@ -33,206 +33,424 @@ class _DetailPageState extends State<DetailPage> {
     final why = app.explainFor(widget.idx);
     final wide = MediaQuery.sizeOf(context).width >= 900;
 
-    Widget head = Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Hero(tag: 'cover${widget.idx}', child: Cover(t.cover, width: wide ? 180 : 120, height: wide ? 260 : 175, radius: 14)),
-      const SizedBox(width: 16),
-      Expanded(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SelectableText(t.display, style: Atlas.serif(size: 34, height: 1.1)),
-          if (t.titleEn != null && t.titleEn != t.title)
-            SelectableText(t.title, style: TextStyle(color: cs.onSurfaceVariant)),
-          const SizedBox(height: 6),
-          Text(metaLine(t) + (d['dur'] != null ? ' · ${d['dur']} min' : ''),
-              style: TextStyle(color: cs.onSurfaceVariant)),
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, runSpacing: 6, children: [
-            if (t.meanScore != null)
-              Chip(
-                  visualDensity: VisualDensity.compact,
-                  avatar: Icon(Icons.star_rounded, size: 16, color: Colors.amber.shade600),
-                  label: Text('${(t.meanScore! / 10).toStringAsFixed(1)} avg')),
-            Chip(visualDensity: VisualDensity.compact, label: Text('${members(t.popularity)} members')),
-            if (c.kinds.length > 1) Chip(visualDensity: VisualDensity.compact, label: Text(kindLabel(t.kind))),
-            if (t.ending != null) Chip(visualDensity: VisualDensity.compact, label: Text('${t.ending} ending')),
-            if (t.tier == 'deep') Chip(visualDensity: VisualDensity.compact, label: const Text('deep profile')),
-          ]),
-          const SizedBox(height: 8),
-          Wrap(spacing: 6, runSpacing: 4, children: [
-            for (final g in t.genres.take(6))
-              Text(g, style: TextStyle(color: cs.primary, fontSize: 12.5, fontWeight: FontWeight.w600)),
-          ]),
-        ]),
-      ),
-    ]);
+    Widget head = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Hero(
+          tag: 'cover${widget.idx}',
+          child: Cover(
+            t.cover,
+            width: wide ? 180 : 120,
+            height: wide ? 260 : 175,
+            radius: 14,
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SelectableText(
+                t.display,
+                style: Atlas.serif(size: 34, height: 1.1),
+              ),
+              if (t.titleEn != null && t.titleEn != t.title)
+                SelectableText(
+                  t.title,
+                  style: TextStyle(color: cs.onSurfaceVariant),
+                ),
+              const SizedBox(height: 6),
+              Text(
+                metaLine(t) + (d['dur'] != null ? ' · ${d['dur']} min' : ''),
+                style: TextStyle(color: cs.onSurfaceVariant),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  if (t.meanScore != null)
+                    Chip(
+                      visualDensity: VisualDensity.compact,
+                      avatar: Icon(
+                        Icons.star_rounded,
+                        size: 16,
+                        color: Colors.amber.shade600,
+                      ),
+                      label: Text(
+                        '${(t.meanScore! / 10).toStringAsFixed(1)} avg',
+                      ),
+                    ),
+                  Chip(
+                    visualDensity: VisualDensity.compact,
+                    label: Text('${members(t.popularity)} members'),
+                  ),
+                  if (c.kinds.length > 1)
+                    Chip(
+                      visualDensity: VisualDensity.compact,
+                      label: Text(kindLabel(t.kind)),
+                    ),
+                  if (t.ending != null)
+                    Chip(
+                      visualDensity: VisualDensity.compact,
+                      label: Text('${t.ending} ending'),
+                    ),
+                  if (t.tier == 'deep')
+                    Chip(
+                      visualDensity: VisualDensity.compact,
+                      label: const Text('deep profile'),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: [
+                  for (final g in t.genres.take(6))
+                    Text(
+                      g,
+                      style: TextStyle(
+                        color: cs.primary,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
 
     final overview = <Widget>[
       if (why != null && app.model?.hasSignal == true)
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: cs.primary.withValues(alpha: .12), borderRadius: BorderRadius.circular(12)),
-          child: Text.rich(TextSpan(children: [
-            TextSpan(text: 'Why you might like it: ', style: TextStyle(color: cs.primary, fontWeight: FontWeight.w700)),
-            TextSpan(text: why.why),
-          ])),
+          decoration: BoxDecoration(
+            color: cs.primary.withValues(alpha: .12),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: 'Why you might like it: ',
+                  style: TextStyle(
+                    color: cs.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                TextSpan(text: why.why),
+              ],
+            ),
+          ),
         ),
       _Section(
         title: 'Premise',
         trailing: FilterChip(
           label: const Text('Spoilers'),
-          avatar: Icon(spoilers ? Icons.visibility : Icons.visibility_off, size: 16),
+          avatar: Icon(
+            spoilers ? Icons.visibility : Icons.visibility_off,
+            size: 16,
+          ),
           selected: spoilers,
           onSelected: (v) => setState(() => spoilers = v),
         ),
         child: AnimatedSize(
           duration: const Duration(milliseconds: 200),
           alignment: Alignment.topCenter,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text((d['sf'] as String?)?.isNotEmpty == true ? d['sf'] : t.pitch, style: const TextStyle(height: 1.4)),
-            if (spoilers) ...[
-              const SizedBox(height: 12),
-              Text('Full story', style: tt.labelLarge?.copyWith(color: cs.error)),
-              const SizedBox(height: 4),
-              Text(d['full'] ?? '', style: const TextStyle(height: 1.4)),
-              if ((d['endd'] as String?)?.isNotEmpty == true) ...[
-                const SizedBox(height: 8),
-                Text('Ending: ${d['endd']}', style: TextStyle(color: cs.onSurfaceVariant, height: 1.4)),
-              ],
-            ] else if (t.ending != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text('Ending type: ${t.ending}', style: TextStyle(color: cs.onSurfaceVariant)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                (d['sf'] as String?)?.isNotEmpty == true ? d['sf'] : t.pitch,
+                style: const TextStyle(height: 1.4),
               ),
-          ]),
+              if (spoilers) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Full story',
+                  style: tt.labelLarge?.copyWith(color: cs.error),
+                ),
+                const SizedBox(height: 4),
+                Text(d['full'] ?? '', style: const TextStyle(height: 1.4)),
+                if ((d['endd'] as String?)?.isNotEmpty == true) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Ending: ${d['endd']}',
+                    style: TextStyle(color: cs.onSurfaceVariant, height: 1.4),
+                  ),
+                ],
+              ] else if (t.ending != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    'Ending type: ${t.ending}',
+                    style: TextStyle(color: cs.onSurfaceVariant),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
-      if ((d['love'] as List?)?.isNotEmpty == true || (d['hate'] as List?)?.isNotEmpty == true)
+      if ((d['love'] as List?)?.isNotEmpty == true ||
+          (d['hate'] as List?)?.isNotEmpty == true)
         _Section(
           title: 'Is it for you?',
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            for (final s in (d['love'] as List? ?? []).cast<String>().take(2))
-              _Bullet(Icons.thumb_up_alt_outlined, 'You\'ll love it if $s', const Color(0xFF9ED8B5)),
-            for (final s in (d['hate'] as List? ?? []).cast<String>().take(2))
-              _Bullet(Icons.thumb_down_alt_outlined, 'Skip it if $s', cs.error),
-          ]),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final s in (d['love'] as List? ?? []).cast<String>().take(2))
+                _Bullet(
+                  Icons.thumb_up_alt_outlined,
+                  'You\'ll love it if $s',
+                  const Color(0xFF9ED8B5),
+                ),
+              for (final s in (d['hate'] as List? ?? []).cast<String>().take(2))
+                _Bullet(
+                  Icons.thumb_down_alt_outlined,
+                  'Skip it if $s',
+                  cs.error,
+                ),
+            ],
+          ),
         ),
       if ((d['cw'] as List?)?.isNotEmpty == true)
         _Section(
           title: 'Content warnings',
-          child: Wrap(spacing: 6, runSpacing: 4, children: [
-            for (final w in (d['cw'] as List).cast<String>())
-              Chip(
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              for (final w in (d['cw'] as List).cast<String>())
+                Chip(
                   visualDensity: VisualDensity.compact,
                   avatar: const Icon(Icons.warning_amber_rounded, size: 16),
-                  label: Text(w)),
-          ]),
+                  label: Text(w),
+                ),
+            ],
+          ),
         ),
       if (_credits(d).isNotEmpty)
         _Section(
           title: 'Credits',
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            for (final (label, value) in _credits(d))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Text.rich(TextSpan(children: [
-                  TextSpan(text: '$label  ', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12.5)),
-                  TextSpan(text: value),
-                ])),
-              ),
-          ]),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final (label, value) in _credits(d))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: '$label  ',
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
+                            fontSize: 12.5,
+                          ),
+                        ),
+                        TextSpan(text: value),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
-      _Section(title: 'Franchise', child: _Franchise(idx: widget.idx, watchNote: d['watch'] as String?)),
+      _Section(
+        title: 'Franchise',
+        child: _Franchise(idx: widget.idx, watchNote: d['watch'] as String?),
+      ),
     ];
 
     final deep = <Widget>[
-      _Section(title: 'Profile', child: _DimView(idx: widget.idx)),
+      _Section(
+        title: 'Profile',
+        child: _DimView(idx: widget.idx),
+      ),
       if ((d['chars'] as List?)?.isNotEmpty == true)
         _Section(
           title: 'Characters',
-          child: Column(children: [
-            for (final ch in (d['chars'] as List).cast<Map<String, dynamic>>().take(6))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  CircleAvatar(radius: 16, backgroundColor: cs.primaryContainer, child: Text('${ch['n']}'.substring(0, 1))),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text.rich(TextSpan(children: [
-                        TextSpan(text: '${ch['n']}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                        TextSpan(text: '  ${(ch['a'] as List? ?? []).join(' · ')}', style: TextStyle(color: cs.primary, fontSize: 12.5)),
-                      ])),
-                      Text('${ch['m'] ?? ''}', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13, height: 1.3)),
-                    ]),
+          child: Column(
+            children: [
+              for (final ch
+                  in (d['chars'] as List).cast<Map<String, dynamic>>().take(6))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      CircleAvatar(
+                        radius: 16,
+                        backgroundColor: cs.primaryContainer,
+                        child: Text('${ch['n']}'.substring(0, 1)),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text.rich(
+                              TextSpan(
+                                children: [
+                                  TextSpan(
+                                    text: '${ch['n']}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  TextSpan(
+                                    text:
+                                        '  ${(ch['a'] as List? ?? []).join(' · ')}',
+                                    style: TextStyle(
+                                      color: cs.primary,
+                                      fontSize: 12.5,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Text(
+                              '${ch['m'] ?? ''}',
+                              style: TextStyle(
+                                color: cs.onSurfaceVariant,
+                                fontSize: 13,
+                                height: 1.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                ]),
-              ),
-          ]),
+                ),
+            ],
+          ),
         ),
       if ((d['rels'] as List?)?.isNotEmpty == true)
         _Section(
           title: 'Key relationships',
-          child: Column(children: [
-            for (final r in (d['rels'] as List).cast<Map<String, dynamic>>())
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(children: [
-                    if (r['rom'] == true) const Padding(padding: EdgeInsets.only(right: 4), child: Icon(Icons.favorite, size: 14, color: Colors.pinkAccent)),
-                    Expanded(child: Text('${r['a']} & ${r['b']}', style: const TextStyle(fontWeight: FontWeight.w700))),
-                  ]),
-                  Text([...(r['t'] as List? ?? []), ...(r['d'] as List? ?? [])].join(' · '),
-                      style: TextStyle(color: cs.primary, fontSize: 12.5)),
-                  if ((r['e'] as String?)?.isNotEmpty == true)
-                    Text(r['e'], style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13, height: 1.3)),
-                ]),
-              ),
-          ]),
+          child: Column(
+            children: [
+              for (final r in (d['rels'] as List).cast<Map<String, dynamic>>())
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          if (r['rom'] == true)
+                            const Padding(
+                              padding: EdgeInsets.only(right: 4),
+                              child: Icon(
+                                Icons.favorite,
+                                size: 14,
+                                color: Colors.pinkAccent,
+                              ),
+                            ),
+                          Expanded(
+                            child: Text(
+                              '${r['a']} & ${r['b']}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Text(
+                        [
+                          ...(r['t'] as List? ?? []),
+                          ...(r['d'] as List? ?? []),
+                        ].join(' · '),
+                        style: TextStyle(color: cs.primary, fontSize: 12.5),
+                      ),
+                      if ((r['e'] as String?)?.isNotEmpty == true)
+                        Text(
+                          r['e'],
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
+                            fontSize: 13,
+                            height: 1.3,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         ),
-      if ((d['sim'] as List?)?.isNotEmpty == true) _Section(title: 'Similar titles', child: _Similar(sim: (d['sim'] as List).cast<Map<String, dynamic>>())),
+      if ((d['sim'] as List?)?.isNotEmpty == true)
+        _Section(
+          title: 'Similar titles',
+          child: _Similar(sim: (d['sim'] as List).cast<Map<String, dynamic>>()),
+        ),
     ];
 
     return Scaffold(
       appBar: AppBar(
         title: Text(t.display, overflow: TextOverflow.ellipsis),
-        actions: [IconButton(tooltip: 'Copy title', icon: const Icon(Icons.copy_rounded, size: 20), onPressed: () => copyText(context, copyableTitle(t)))],
+        actions: [
+          IconButton(
+            tooltip: 'Copy title',
+            icon: const Icon(Icons.copy_rounded, size: 20),
+            onPressed: () => copyText(context, copyableTitle(t)),
+          ),
+        ],
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          child: Row(children: [
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: () => showRatingSheet(context, widget.idx),
-                icon: Icon(entry?.status == EntryStatus.watched ? Icons.edit : Icons.check_circle_outline),
-                label: Text(entry?.status == EntryStatus.watched
-                    ? 'Watched${entry?.rating != null ? ' · ${entry!.rating}' : ''} — edit'
-                    : 'I\'ve watched this'),
+          child: Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () => showRatingSheet(context, widget.idx),
+                  icon: Icon(
+                    entry?.status == EntryStatus.watched
+                        ? Icons.edit
+                        : Icons.check_circle_outline,
+                  ),
+                  label: Text(
+                    entry?.status == EntryStatus.watched
+                        ? 'Watched${entry?.rating != null ? ' · ${entry!.rating}' : ''} — edit'
+                        : 'I\'ve watched this',
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-            IconButton.filledTonal(
-              tooltip: 'Plan to watch',
-              onPressed: () => app.setStatus(widget.idx, EntryStatus.planned),
-              icon: Icon(entry?.status == EntryStatus.planned ? Icons.bookmark : Icons.bookmark_add_outlined),
-            ),
-            IconButton.filledTonal(
-              tooltip: 'Ignore (hide, no taste signal)',
-              onPressed: () {
-                app.setStatus(widget.idx, EntryStatus.ignored);
-                Navigator.pop(context);
-              },
-              icon: const Icon(Icons.visibility_off_outlined),
-            ),
-            IconButton.filledTonal(
-              tooltip: 'Not interested',
-              onPressed: () {
-                app.setStatus(widget.idx, EntryStatus.notInterested);
-                Navigator.pop(context);
-              },
-              icon: const Icon(Icons.thumb_down_outlined),
-            ),
-          ]),
+              const SizedBox(width: 8),
+              IconButton.filledTonal(
+                tooltip: 'Plan to watch',
+                onPressed: () => app.setStatus(widget.idx, EntryStatus.planned),
+                icon: Icon(
+                  entry?.status == EntryStatus.planned
+                      ? Icons.bookmark
+                      : Icons.bookmark_add_outlined,
+                ),
+              ),
+              IconButton.filledTonal(
+                tooltip: 'Ignore (hide, no taste signal)',
+                onPressed: () {
+                  app.setStatus(widget.idx, EntryStatus.ignored);
+                  Navigator.pop(context);
+                },
+                icon: const Icon(Icons.visibility_off_outlined),
+              ),
+              IconButton.filledTonal(
+                tooltip: 'Not interested',
+                onPressed: () {
+                  app.setStatus(widget.idx, EntryStatus.notInterested);
+                  Navigator.pop(context);
+                },
+                icon: const Icon(Icons.thumb_down_outlined),
+              ),
+            ],
+          ),
         ),
       ),
       body: SingleChildScrollView(
@@ -240,17 +458,26 @@ class _DetailPageState extends State<DetailPage> {
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 1100),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              head,
-              const SizedBox(height: 16),
-              if (wide)
-                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Expanded(child: Column(children: overview)),
-                  const SizedBox(width: 24),
-                  Expanded(child: Column(children: deep)),
-                ])
-              else ...[...overview, ...deep],
-            ]),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                head,
+                const SizedBox(height: 16),
+                if (wide)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: Column(children: overview)),
+                      const SizedBox(width: 24),
+                      Expanded(child: Column(children: deep)),
+                    ],
+                  )
+                else ...[
+                  ...overview,
+                  ...deep,
+                ],
+              ],
+            ),
           ),
         ),
       ),
@@ -260,9 +487,20 @@ class _DetailPageState extends State<DetailPage> {
 
 /// Credits for movies/TV (directors, cast, creators, rating); empty for anime.
 List<(String, String)> _credits(Map<String, dynamic> d) {
-  String join(dynamic v) => v is List ? v.map((e) => e is Map ? '${e['name'] ?? e['n'] ?? ''}' : '$e').where((x) => x.isNotEmpty).join(', ') : '${v ?? ''}';
+  String join(dynamic v) => v is List
+      ? v
+            .map((e) => e is Map ? '${e['name'] ?? e['n'] ?? ''}' : '$e')
+            .where((x) => x.isNotEmpty)
+            .join(', ')
+      : '${v ?? ''}';
   final out = <(String, String)>[];
-  for (final (key, label) in const [('dir', 'Directed by'), ('by', 'Created by'), ('cast', 'Starring'), ('rated', 'Rated'), ('countries', 'Countries')]) {
+  for (final (key, label) in const [
+    ('dir', 'Directed by'),
+    ('by', 'Created by'),
+    ('cast', 'Starring'),
+    ('rated', 'Rated'),
+    ('countries', 'Countries'),
+  ]) {
     final v = join(d[key]);
     if (v.isNotEmpty) out.add((label, v));
   }
@@ -278,15 +516,25 @@ class _Section extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: 18),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-          const Spacer(),
-          if (trailing != null) trailing!,
-        ]),
-        const SizedBox(height: 8),
-        child,
-      ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                title,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const Spacer(),
+              if (trailing != null) trailing!,
+            ],
+          ),
+          const SizedBox(height: 8),
+          child,
+        ],
+      ),
     );
   }
 }
@@ -298,13 +546,16 @@ class _Bullet extends StatelessWidget {
   const _Bullet(this.icon, this.text, this.color);
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(icon, size: 16, color: color),
-          const SizedBox(width: 8),
-          Expanded(child: Text(text, style: const TextStyle(height: 1.3))),
-        ]),
-      );
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 8),
+        Expanded(child: Text(text, style: const TextStyle(height: 1.3))),
+      ],
+    ),
+  );
 }
 
 class _Franchise extends StatelessWidget {
@@ -315,24 +566,61 @@ class _Franchise extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.read<AppState>();
     final c = app.data;
-    final rel = c.relations[idx].where((r) => const {'PREQUEL', 'SEQUEL', 'PARENT', 'SIDE_STORY', 'SPIN_OFF', 'ALTERNATIVE', 'SUMMARY', 'FULL_STORY'}.contains(r.$2)).toList();
+    final rel = c.relations[idx]
+        .where(
+          (r) => const {
+            'PREQUEL',
+            'SEQUEL',
+            'PARENT',
+            'SIDE_STORY',
+            'SPIN_OFF',
+            'ALTERNATIVE',
+            'SUMMARY',
+            'FULL_STORY',
+          }.contains(r.$2),
+        )
+        .toList();
     final cs = Theme.of(context).colorScheme;
     if (rel.isEmpty && (watchNote == null || watchNote!.isEmpty)) {
-      return Text('Standalone as far as the catalog knows.', style: TextStyle(color: cs.onSurfaceVariant));
+      return Text(
+        'Standalone as far as the catalog knows.',
+        style: TextStyle(color: cs.onSurfaceVariant),
+      );
     }
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      if (watchNote != null && watchNote!.isNotEmpty) Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(watchNote!, style: const TextStyle(height: 1.35))),
-      for (final (o, type) in rel)
-        ListTile(
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          leading: Cover(c.titles[o].cover, width: 32, height: 46, radius: 6),
-          title: Text(c.titles[o].display, maxLines: 1, overflow: TextOverflow.ellipsis),
-          subtitle: Text('${type.toLowerCase().replaceAll('_', ' ')} · ${metaLine(c.titles[o])}'),
-          trailing: app.entryOf(o)?.status == EntryStatus.watched ? const Icon(Icons.check_circle, size: 18, color: Color(0xFF9ED8B5)) : null,
-          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => DetailPage(idx: o))),
-        ),
-    ]);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (watchNote != null && watchNote!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(watchNote!, style: const TextStyle(height: 1.35)),
+          ),
+        for (final (o, type) in rel)
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: Cover(c.titles[o].cover, width: 32, height: 46, radius: 6),
+            title: Text(
+              c.titles[o].display,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Text(
+              '${type.toLowerCase().replaceAll('_', ' ')} · ${metaLine(c.titles[o])}',
+            ),
+            trailing: app.entryOf(o)?.status == EntryStatus.watched
+                ? const Icon(
+                    Icons.check_circle,
+                    size: 18,
+                    color: Color(0xFF9ED8B5),
+                  )
+                : null,
+            onTap: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => DetailPage(idx: o))),
+          ),
+      ],
+    );
   }
 }
 
@@ -348,32 +636,80 @@ class _Similar extends StatelessWidget {
     for (final s in sim) {
       final name = '${s['t']}';
       final hits = app.search.search(name, limit: 1);
-      final idx = (hits.isNotEmpty && hits.first.raw >= 90 - 1) ? hits.first.idx : null;
+      final idx = (hits.isNotEmpty && hits.first.raw >= 90 - 1)
+          ? hits.first.idx
+          : null;
       resolved.add((name, '${s['w']}', idx));
     }
-    return Column(children: [
-      for (final (name, why, idx) in resolved)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(8),
-            onTap: idx == null ? null : () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => DetailPage(idx: idx))),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              if (idx != null) Padding(padding: const EdgeInsets.only(right: 10), child: Cover(app.data.titles[idx].cover, width: 36, height: 52, radius: 6)),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(children: [
-                    Flexible(child: Text(name, style: TextStyle(fontWeight: FontWeight.w700, color: idx != null ? cs.primary : null))),
-                    if (idx != null && app.entryOf(idx)?.status == EntryStatus.watched)
-                      const Padding(padding: EdgeInsets.only(left: 6), child: Icon(Icons.check_circle, size: 14, color: Color(0xFF9ED8B5))),
-                  ]),
-                  Text(why, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12.5, height: 1.3)),
-                ]),
+    return Column(
+      children: [
+        for (final (name, why, idx) in resolved)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: idx == null
+                  ? null
+                  : () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => DetailPage(idx: idx)),
+                    ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (idx != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 10),
+                      child: Cover(
+                        app.data.titles[idx].cover,
+                        width: 36,
+                        height: 52,
+                        radius: 6,
+                      ),
+                    ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                name,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: idx != null ? cs.primary : null,
+                                ),
+                              ),
+                            ),
+                            if (idx != null &&
+                                app.entryOf(idx)?.status == EntryStatus.watched)
+                              const Padding(
+                                padding: EdgeInsets.only(left: 6),
+                                child: Icon(
+                                  Icons.check_circle,
+                                  size: 14,
+                                  color: Color(0xFF9ED8B5),
+                                ),
+                              ),
+                          ],
+                        ),
+                        Text(
+                          why,
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
+                            fontSize: 12.5,
+                            height: 1.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ]),
+            ),
           ),
-        ),
-    ]);
+      ],
+    );
   }
 }
 
@@ -387,38 +723,64 @@ class _DimView extends StatelessWidget {
     final D = CatalogData.dimCount;
     // the dimensions in which this title is most distinctive
     final order = List<int>.generate(D, (i) => i)
-      ..sort((a, b) => c.dimZ[idx * D + b].abs().compareTo(c.dimZ[idx * D + a].abs()));
+      ..sort(
+        (a, b) =>
+            c.dimZ[idx * D + b].abs().compareTo(c.dimZ[idx * D + a].abs()),
+      );
     final top = order.take(8).toList();
     final radarVals = [for (final d in top) c.dim(idx, d) / 10];
     final radarLabels = [for (final d in top) dimTitle(c.dimNames[d])];
-    return Column(children: [
-      SizedBox(
-        height: 250,
-        child: CustomPaint(
-          painter: _RadarPainter(radarVals, radarLabels, cs.primary, cs.outlineVariant, cs.onSurfaceVariant),
-          size: Size.infinite,
-        ),
-      ),
-      const SizedBox(height: 8),
-      for (final d in order.take(12))
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 3),
-          child: Row(children: [
-            SizedBox(width: 150, child: Text(dimTitle(c.dimNames[d]), style: const TextStyle(fontSize: 12.5))),
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: c.dim(idx, d) / 10,
-                  minHeight: 8,
-                  backgroundColor: cs.surfaceContainerHighest,
-                ),
-              ),
+    return Column(
+      children: [
+        SizedBox(
+          height: 250,
+          child: CustomPaint(
+            painter: _RadarPainter(
+              radarVals,
+              radarLabels,
+              cs.primary,
+              cs.outlineVariant,
+              cs.onSurfaceVariant,
             ),
-            SizedBox(width: 34, child: Text(c.dim(idx, d).toStringAsFixed(1), textAlign: TextAlign.right, style: const TextStyle(fontSize: 12))),
-          ]),
+            size: Size.infinite,
+          ),
         ),
-    ]);
+        const SizedBox(height: 8),
+        for (final d in order.take(12))
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 3),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 150,
+                  child: Text(
+                    dimTitle(c.dimNames[d]),
+                    style: const TextStyle(fontSize: 12.5),
+                  ),
+                ),
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: c.dim(idx, d) / 10,
+                      minHeight: 8,
+                      backgroundColor: cs.surfaceContainerHighest,
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 34,
+                  child: Text(
+                    c.dim(idx, d).toStringAsFixed(1),
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
   }
 }
 
@@ -457,10 +819,19 @@ class _RadarPainter extends CustomPainter {
     }
     poly.close();
     canvas.drawPath(poly, Paint()..color = fill.withValues(alpha: .28));
-    canvas.drawPath(poly, Paint()..color = fill..style = PaintingStyle.stroke..strokeWidth = 2);
+    canvas.drawPath(
+      poly,
+      Paint()
+        ..color = fill
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2,
+    );
     for (var i = 0; i < n; i++) {
       final tp = TextPainter(
-        text: TextSpan(text: labels[i], style: TextStyle(fontSize: 11, color: text)),
+        text: TextSpan(
+          text: labels[i],
+          style: TextStyle(fontSize: 11, color: text),
+        ),
         textDirection: TextDirection.ltr,
         maxLines: 1,
       )..layout(maxWidth: 110);

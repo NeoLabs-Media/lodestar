@@ -1,5 +1,7 @@
 import '../engine/recommender.dart';
-import 'user_store_native.dart' if (dart.library.js_interop) 'user_store_web.dart' as impl;
+import 'user_store_native.dart'
+    if (dart.library.js_interop) 'user_store_web.dart'
+    as impl;
 
 /// On-device user data (entries + settings). SQLite on native platforms, browser localStorage on web.
 abstract class UserStore {

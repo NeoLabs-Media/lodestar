@@ -7,7 +7,8 @@ class Show {
   final int id; // catalog title id
   final int? anilist, mal, tmdb;
   final String? imdb;
-  final String key; // stable external identity: anilist:N | mal:N | tmdb:movie:N | tmdb:tv:N | imdb:ttN | id:N
+  final String
+  key; // stable external identity: anilist:N | mal:N | tmdb:movie:N | tmdb:tv:N | imdb:ttN | id:N
   final String kind; // anime | movie | tv
   final String? releaseDate, coverUrl;
   final String title;
@@ -55,8 +56,11 @@ class Show {
   });
 
   /// Display title: prefer English when available, romaji as fallback.
-  String get display => (titleEn != null && titleEn!.isNotEmpty) ? titleEn! : title;
-  String get cover => (coverUrl != null && coverUrl!.isNotEmpty) ? coverUrl! : ((pic ?? thumb) ?? '');
+  String get display =>
+      (titleEn != null && titleEn!.isNotEmpty) ? titleEn! : title;
+  String get cover => (coverUrl != null && coverUrl!.isNotEmpty)
+      ? coverUrl!
+      : ((pic ?? thumb) ?? '');
   bool get isAnime => kind == 'anime';
 }
 
@@ -84,7 +88,8 @@ class CatalogData {
   final List<FacetDef> vocab;
   final Float32List facetIdf;
   final List<List<(int, String)>> relations; // idx -> (other idx, type)
-  final List<List<(int, int)>> recs; // idx -> (other idx, rating), both directions
+  final List<List<(int, int)>>
+  recs; // idx -> (other idx, rating), both directions
   final Map<String, String> meta;
 
   late final Map<int, int> idToIdx;
@@ -111,16 +116,16 @@ class CatalogData {
     required this.relations,
     required this.recs,
     required this.meta,
-  })  : dimZ = Float32List(titles.length * dimCount),
-        dimMean = Float32List(dimCount),
-        dimStd = Float32List(dimCount),
-        facetIdf = Float32List(vocab.length) {
+  }) : dimZ = Float32List(titles.length * dimCount),
+       dimMean = Float32List(dimCount),
+       dimStd = Float32List(dimCount),
+       facetIdf = Float32List(vocab.length) {
     idToIdx = {for (final t in titles) t.id: t.idx};
     keyToIdx = {for (final t in titles) t.key: t.idx};
     kinds = {for (final t in titles) t.kind};
     anilistToIdx = {
       for (final t in titles)
-        if (t.anilist != null) t.anilist!: t.idx
+        if (t.anilist != null) t.anilist!: t.idx,
     };
     facetIndex = {for (final f in vocab) '${f.kind}|${f.value}': f.fid};
     _computeDimStats();
@@ -169,7 +174,9 @@ class CatalogData {
     final order = List<int>.generate(n, (i) => i)
       ..sort((a, b) => titles[b].popularity.compareTo(titles[a].popularity));
     obscurity = Float32List(n);
-    final known = order.where((i) => titles[i].popularity > 0).toList(); // 0 = no data
+    final known = order
+        .where((i) => titles[i].popularity > 0)
+        .toList(); // 0 = no data
     for (var r = 0; r < known.length; r++) {
       obscurity[known[r]] = known.length <= 1 ? 0.5 : r / (known.length - 1);
     }
@@ -179,14 +186,23 @@ class CatalogData {
     qual = Float32List(n);
     for (var i = 0; i < n; i++) {
       final t = titles[i];
-      final qm = t.meanScore == null ? 0.35 : ((t.meanScore! - 55) / 30).clamp(0.0, 1.0);
+      final qm = t.meanScore == null
+          ? 0.35
+          : ((t.meanScore! - 55) / 30).clamp(0.0, 1.0);
       final qc = t.quality == null ? qm : (t.quality! / 10).clamp(0.0, 1.0);
       qual[i] = 0.75 * qm + 0.25 * qc;
     }
   }
 
   static const _franchiseTypes = {
-    'PREQUEL', 'SEQUEL', 'PARENT', 'SIDE_STORY', 'SPIN_OFF', 'ALTERNATIVE', 'SUMMARY', 'FULL_STORY'
+    'PREQUEL',
+    'SEQUEL',
+    'PARENT',
+    'SIDE_STORY',
+    'SPIN_OFF',
+    'ALTERNATIVE',
+    'SUMMARY',
+    'FULL_STORY',
   };
 
   void _computeFranchise() {

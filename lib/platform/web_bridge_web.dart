@@ -10,4 +10,5 @@ String? takePendingImport() {
   return (v as JSString).toDart;
 }
 
-void openInNewTab(String relativeUrl) => web.window.open(Uri.base.resolve(relativeUrl).toString(), '_blank');
+void openInNewTab(String relativeUrl) =>
+    web.window.open(Uri.base.resolve(relativeUrl).toString(), '_blank');

@@ -10,14 +10,23 @@ enum EntryStatus { watched, planned, notInterested, ignored }
 /// One row of user state about a title.
 class UserEntry {
   final int id; // catalog title id
-  final String? key; // stable external title key (kind + external id) used to re-link if ids change
+  final String?
+  key; // stable external title key (kind + external id) used to re-link if ids change
   final EntryStatus status;
   final double? rating; // 1..10 (half steps)
-  final Set<String> reasons; // liked: "g:romance" / "f:kind|value"; disliked: "n:romance" / "x:kind|value"
+  final Set<String>
+  reasons; // liked: "g:romance" / "f:kind|value"; disliked: "n:romance" / "x:kind|value"
   final String note;
   final int updatedAt;
   UserEntry withKey(String? k, {int? id}) => UserEntry(
-      id: id ?? this.id, key: k, status: status, rating: rating, reasons: reasons, note: note, updatedAt: updatedAt);
+    id: id ?? this.id,
+    key: k,
+    status: status,
+    rating: rating,
+    reasons: reasons,
+    note: note,
+    updatedAt: updatedAt,
+  );
   const UserEntry({
     required this.id,
     this.key,
@@ -37,7 +46,8 @@ class Controls {
   Set<String> moods;
   Set<String> excludeWarnings;
   Set<String> categories; // any-of, see categories.dart
-  Set<String> kinds; // media kinds to include: anime | movie | tv (empty = mix everything)
+  Set<String>
+  kinds; // media kinds to include: anime | movie | tv (empty = mix everything)
   int? minYear;
   Controls({
     this.obscurity = 0.45,
@@ -48,11 +58,11 @@ class Controls {
     Set<String>? categories,
     Set<String>? kinds,
     this.minYear,
-  })  : formats = formats ?? {},
-        moods = moods ?? {},
-        excludeWarnings = excludeWarnings ?? {},
-        categories = categories ?? {},
-        kinds = kinds ?? {};
+  }) : formats = formats ?? {},
+       moods = moods ?? {},
+       excludeWarnings = excludeWarnings ?? {},
+       categories = categories ?? {},
+       kinds = kinds ?? {};
 }
 
 class Rec {
@@ -63,7 +73,15 @@ class Rec {
   final int? anchor; // watched title that explains the match
   final bool gem;
   final List<String> tags;
-  Rec(this.idx, this.score, this.match, this.why, this.anchor, this.gem, this.tags);
+  Rec(
+    this.idx,
+    this.score,
+    this.match,
+    this.why,
+    this.anchor,
+    this.gem,
+    this.tags,
+  );
 }
 
 class DimPref {
@@ -86,10 +104,21 @@ class TasteSummary {
   final List<DimPref> likes, avoids;
   final List<FacetPref> facetLikes, facetAvoids;
   final Map<String, int> reasonCounts; // label -> count
-  final List<FacetPref> dislikedTags; // tags the user explicitly flagged (strength = -times flagged)
-  final List<String> dislikedAspects; // generic aspects flagged ("Humor", "Pacing"…)
-  TasteSummary(this.rated, this.meanRating, this.likes, this.avoids, this.facetLikes, this.facetAvoids,
-      this.reasonCounts, {this.dislikedTags = const [], this.dislikedAspects = const []});
+  final List<FacetPref>
+  dislikedTags; // tags the user explicitly flagged (strength = -times flagged)
+  final List<String>
+  dislikedAspects; // generic aspects flagged ("Humor", "Pacing"…)
+  TasteSummary(
+    this.rated,
+    this.meanRating,
+    this.likes,
+    this.avoids,
+    this.facetLikes,
+    this.facetAvoids,
+    this.reasonCounts, {
+    this.dislikedTags = const [],
+    this.dislikedAspects = const [],
+  });
 }
 
 /// Fitted user taste: everything needed to score a candidate.
@@ -99,8 +128,10 @@ class TasteModel {
   final Float32List? taste; // unit vector, null when no signal
   final Float32List wDim; // preference weights over standardised dims
   final Float32List wFac; // over facet vocab
-  final Map<int, double> reasonFacets; // fid -> strength (explicit "what I liked")
-  final Map<int, double> avoidFacets; // fid -> how often the user flagged this tag as disliked
+  final Map<int, double>
+  reasonFacets; // fid -> strength (explicit "what I liked")
+  final Map<int, double>
+  avoidFacets; // fid -> how often the user flagged this tag as disliked
   final Map<int, double> comm; // idx -> community (AniList recs) score
   final Set<int> seen; // indices excluded from the feed
   final Set<int> watched;
@@ -180,26 +211,30 @@ class Recommender {
     // user's own mean rating, shrunk to a prior of 7 when little data
     final rated = [
       for (final e in byIdx.entries)
-        if (e.value.status == EntryStatus.watched && e.value.rating != null) e.value.rating!
+        if (e.value.status == EntryStatus.watched && e.value.rating != null)
+          e.value.rating!,
     ];
-    final mean = (rated.fold(0.0, (a, b) => a + b) + 3 * 7.0) / (rated.length + 3);
+    final mean =
+        (rated.fold(0.0, (a, b) => a + b) + 3 * 7.0) / (rated.length + 3);
 
     final signal = <int, double>{};
     for (final e in byIdx.entries) {
       final u = e.value;
       if (u.status == EntryStatus.watched) {
-        signal[e.key] = u.rating == null ? 0.35 : ((u.rating! - mean) / 2.0).clamp(-2.0, 2.0);
+        signal[e.key] = u.rating == null
+            ? 0.35
+            : ((u.rating! - mean) / 2.0).clamp(-2.0, 2.0);
       } else if (u.status == EntryStatus.notInterested) {
         signal[e.key] = -0.8;
       }
     }
     final positives = [
       for (final e in signal.entries)
-        if (e.value > 0.05) (e.key, e.value)
+        if (e.value > 0.05) (e.key, e.value),
     ];
     final negatives = [
       for (final e in signal.entries)
-        if (e.value < -0.05) (e.key, e.value)
+        if (e.value < -0.05) (e.key, e.value),
     ];
     final nSignals = signal.length;
     final F = c.vocab.length;
@@ -207,9 +242,20 @@ class Recommender {
     final wDim = Float32List(D), wFac = Float32List(F);
     if (nSignals == 0) {
       return TasteModel(
-          nSignals: 0, mean: mean, taste: null, wDim: wDim, wFac: wFac, reasonFacets: {}, comm: {},
-          seen: seen, watched: watched, signal: signal, positives: positives, negatives: negatives,
-          byIdx: byIdx);
+        nSignals: 0,
+        mean: mean,
+        taste: null,
+        wDim: wDim,
+        wFac: wFac,
+        reasonFacets: {},
+        comm: {},
+        seen: seen,
+        watched: watched,
+        signal: signal,
+        positives: positives,
+        negatives: negatives,
+        byIdx: byIdx,
+      );
     }
 
     // embedding taste vector
@@ -386,9 +432,21 @@ class Recommender {
     }
 
     return TasteModel(
-        nSignals: nSignals, mean: mean, taste: tasteVec, wDim: wDim, wFac: wFac,
-        reasonFacets: reasonFacets, avoidFacets: avoidFacets, comm: comm, seen: seen, watched: watched, signal: signal,
-        positives: positives, negatives: negatives, byIdx: byIdx);
+      nSignals: nSignals,
+      mean: mean,
+      taste: tasteVec,
+      wDim: wDim,
+      wFac: wFac,
+      reasonFacets: reasonFacets,
+      avoidFacets: avoidFacets,
+      comm: comm,
+      seen: seen,
+      watched: watched,
+      signal: signal,
+      positives: positives,
+      negatives: negatives,
+      byIdx: byIdx,
+    );
   }
 
   double _stdOfScores(Float32List wDim, Float32List wFac) {
@@ -443,10 +501,23 @@ class Recommender {
 
   // --- scoring ----------------------------------------------------------------
   static const _loOk = {
-    'fanservice', 'sexual_content', 'violence_gore', 'horror_dread', 'psychological_darkness',
-    'action_intensity', 'tension_suspense', 'plot_complexity', 'romance_centrality', 'cuteness',
+    'fanservice',
+    'sexual_content',
+    'violence_gore',
+    'horror_dread',
+    'psychological_darkness',
+    'action_intensity',
+    'tension_suspense',
+    'plot_complexity',
+    'romance_centrality',
+    'cuteness',
   };
-  static const _penaltyRel = {'SUMMARY': 0.7, 'ALTERNATIVE': 0.6, 'SPIN_OFF': 0.3, 'SIDE_STORY': 0.3};
+  static const _penaltyRel = {
+    'SUMMARY': 0.7,
+    'ALTERNATIVE': 0.6,
+    'SPIN_OFF': 0.3,
+    'SIDE_STORY': 0.3,
+  };
   static const _contRel = {'SEQUEL', 'PREQUEL', 'PARENT', 'FULL_STORY'};
 
   /// Per-title bitmask of the categories in categories.dart.
@@ -456,8 +527,10 @@ class Recommender {
       rules[k] = [
         for (final (kind, value, w) in categories[k].any)
           // movie/TV catalogs carry TMDB keywords where anime carry AniList tags
-          for (final kk in (kind == 'anilist_tag' ? ['anilist_tag', 'keyword'] : [kind]))
-            if (c.facetIndex['$kk|$value'] != null) (c.facetIndex['$kk|$value']!, w)
+          for (final kk
+              in (kind == 'anilist_tag' ? ['anilist_tag', 'keyword'] : [kind]))
+            if (c.facetIndex['$kk|$value'] != null)
+              (c.facetIndex['$kk|$value']!, w),
       ];
     }
     final out = Int32List(c.n);
@@ -497,17 +570,30 @@ class Recommender {
     }
     if (ctl.formats.isNotEmpty) {
       final f = t.format ?? '';
-      final g = (f == 'TV') ? 'TV' : (f == 'MOVIE') ? 'MOVIE' : (f == 'TV_SHORT') ? 'SHORT' : 'OVA';
+      final g = (f == 'TV')
+          ? 'TV'
+          : (f == 'MOVIE')
+          ? 'MOVIE'
+          : (f == 'TV_SHORT')
+          ? 'SHORT'
+          : 'OVA';
       if (!ctl.formats.contains(g)) return false;
     }
-    if (ctl.maxEpisodes != null && (t.episodes ?? 0) > ctl.maxEpisodes!) return false;
+    if (ctl.maxEpisodes != null && (t.episodes ?? 0) > ctl.maxEpisodes!)
+      return false;
     if (ctl.minYear != null && (t.year ?? 0) < ctl.minYear!) return false;
     if (ctl.moods.isNotEmpty || ctl.excludeWarnings.isNotEmpty) {
       var moodOk = ctl.moods.isEmpty;
       for (final (fid, w) in c.facetsOf(i)) {
         final f = c.vocab[fid];
-        if (!moodOk && f.kind == 'moods' && w >= 4 && ctl.moods.contains(f.value)) moodOk = true;
-        if (f.kind == 'content_warnings' && w >= 3 && ctl.excludeWarnings.contains(f.value)) {
+        if (!moodOk &&
+            f.kind == 'moods' &&
+            w >= 4 &&
+            ctl.moods.contains(f.value))
+          moodOk = true;
+        if (f.kind == 'content_warnings' &&
+            w >= 3 &&
+            ctl.excludeWarnings.contains(f.value)) {
           return false;
         }
       }
@@ -536,7 +622,12 @@ class Recommender {
 
   double _z(double x, double mu, double sd) => (x - mu) / sd;
 
-  List<Rec> recommend(TasteModel m, Controls ctl, {int count = 40, bool diversify = true}) {
+  List<Rec> recommend(
+    TasteModel m,
+    Controls ctl, {
+    int count = 40,
+    bool diversify = true,
+  }) {
     final scored = _rank(m, ctl);
     final pool = scored.take(300).toList();
     final chosen = diversify ? _mmr(pool, m, count) : pool.take(count).toList();
@@ -545,8 +636,9 @@ class Recommender {
   }
 
   /// All unseen titles ranked by raw score (no diversification); for evaluation.
-  List<int> rankAll(TasteModel m, {Controls? controls}) =>
-      [for (final x in _rank(m, controls ?? Controls(obscurity: 0.33))) x.idx];
+  List<int> rankAll(TasteModel m, {Controls? controls}) => [
+    for (final x in _rank(m, controls ?? Controls(obscurity: 0.33))) x.idx,
+  ];
 
   List<_Cand> _rank(TasteModel m, Controls ctl) {
     final n = c.n;
@@ -557,7 +649,9 @@ class Recommender {
     final out = <_Cand>[];
     for (var i = 0; i < n; i++) {
       if (m.seen.contains(i) || !_passes(i, ctl)) continue;
-      final ze = m.taste == null ? 0.0 : _z(sc.emb[i], embStats.$1, embStats.$2);
+      final ze = m.taste == null
+          ? 0.0
+          : _z(sc.emb[i], embStats.$1, embStats.$2);
       final zf = m.hasSignal ? _z(sc.feat[i], featStats.$1, featStats.$2) : 0.0;
       final cm = m.comm[i];
       final commTerm = cm == null ? 0.0 : 1.1 * _tanh(cm / 2.5);
@@ -573,7 +667,8 @@ class Recommender {
         if (_contRel.contains(type)) {
           final s = m.signal[o] ?? 0;
           pen += s < 0 ? 1.2 : 0.35;
-          if (s > 0.2 && seqOf < 0 && (type == 'PREQUEL' || type == 'PARENT')) seqOf = o;
+          if (s > 0.2 && seqOf < 0 && (type == 'PREQUEL' || type == 'PARENT'))
+            seqOf = o;
           if (s > 0.2 && preOf < 0 && type == 'SEQUEL') preOf = o;
         }
       }
@@ -590,7 +685,8 @@ class Recommender {
         var avoid = 0.0;
         for (final (fid, w) in c.facetsOf(i)) {
           final a = m.avoidFacets[fid];
-          if (a != null && w >= 4) avoid += 2.4 * math.min(a, 2.0) * (w / 10).clamp(0.4, 1.0);
+          if (a != null && w >= 4)
+            avoid += 2.4 * math.min(a, 2.0) * (w / 10).clamp(0.4, 1.0);
         }
         pen += math.min(avoid, 8.0) / 1.4;
       }
@@ -600,7 +696,12 @@ class Recommender {
       final gate = _sigmoid((matchZ - 0.2) * 2.2);
       final gem = (g - 0.33) * 9.0 * obsC * (m.hasSignal ? gate : 1.0);
       final qualTerm = 0.45 * zq * (0.6 + 0.4 * g);
-      final fin = base + gem + qualTerm - pen * 1.4 + (m.hasSignal ? 0 : 0.8 * zq - 1.5 * obsC * (1 - g));
+      final fin =
+          base +
+          gem +
+          qualTerm -
+          pen * 1.4 +
+          (m.hasSignal ? 0 : 0.8 * zq - 1.5 * obsC * (1 - g));
       out.add(_Cand(i, fin, base, ze, zf, seqOf, preOf));
     }
     out.sort((a, b) => b.score.compareTo(a.score));
@@ -629,7 +730,8 @@ class Recommender {
       final pick = rest.removeAt(best);
       maxSim.removeAt(best);
       chosen.add(pick);
-      franchiseCount[c.franchise[pick.idx]] = (franchiseCount[c.franchise[pick.idx]] ?? 0) + 1;
+      franchiseCount[c.franchise[pick.idx]] =
+          (franchiseCount[c.franchise[pick.idx]] ?? 0) + 1;
       for (var k = 0; k < rest.length; k++) {
         final s = c.cosine(rest[k].idx, pick.idx);
         if (s > maxSim[k]) maxSim[k] = s;
@@ -665,8 +767,15 @@ class Recommender {
       r -= weights[k];
       if (r <= 0) {
         final rec = _toRec(top[k], m);
-        return Rec(rec.idx, rec.score, rec.match,
-            'Off the beaten path: ${rec.why}', rec.anchor, rec.gem, rec.tags);
+        return Rec(
+          rec.idx,
+          rec.score,
+          rec.match,
+          'Off the beaten path: ${rec.why}',
+          rec.anchor,
+          rec.gem,
+          rec.tags,
+        );
       }
     }
     return _toRec(top.first, m);
@@ -677,15 +786,42 @@ class Recommender {
     final t = c.titles[cand.idx];
     final avgZ = cand.base / 1.9;
     final match = m.hasSignal ? 100 * _sigmoid((avgZ - 1.1) * 1.9) : 0.0;
-    final gem = c.obscurity[cand.idx] > 0.55 && c.qual[cand.idx] > 0.55 && (m.hasSignal ? avgZ > 0.7 : true);
-    final (why, anchor, tags) = explain(cand.idx, m, seqOf: cand.seqOf, preOf: cand.preOf, anchorUse: anchorUse);
-    return Rec(cand.idx, cand.score, m.hasSignal ? match.clamp(1, 99.0).toDouble() : 0.0, why, anchor, gem && t.popularity >= 0, tags);
+    final gem =
+        c.obscurity[cand.idx] > 0.55 &&
+        c.qual[cand.idx] > 0.55 &&
+        (m.hasSignal ? avgZ > 0.7 : true);
+    final (why, anchor, tags) = explain(
+      cand.idx,
+      m,
+      seqOf: cand.seqOf,
+      preOf: cand.preOf,
+      anchorUse: anchorUse,
+    );
+    return Rec(
+      cand.idx,
+      cand.score,
+      m.hasSignal ? match.clamp(1, 99.0).toDouble() : 0.0,
+      why,
+      anchor,
+      gem && t.popularity >= 0,
+      tags,
+    );
   }
 
   /// Specific "why this" text from the largest contributors.
-  (String, int?, List<String>) explain(int idx, TasteModel m, {int seqOf = -1, int preOf = -1, Map<int, int>? anchorUse}) {
+  (String, int?, List<String>) explain(
+    int idx,
+    TasteModel m, {
+    int seqOf = -1,
+    int preOf = -1,
+    Map<int, int>? anchorUse,
+  }) {
     if (!m.hasSignal) {
-      return ('Well-reviewed pick — rate a few titles to personalise.', null, const []);
+      return (
+        'Well-reviewed pick — rate a few titles to personalise.',
+        null,
+        const [],
+      );
     }
     final D = CatalogData.dimCount;
     final phrases = <(double, String, String)>[]; // (strength, phrase, key)
@@ -703,7 +839,8 @@ class Recommender {
     final fn = _fNorm[idx];
     for (final (fid, w) in c.facetsOf(idx)) {
       final f = c.vocab[fid];
-      if (f.kind == 'content_warnings' || f.kind == 'relationship_types') continue;
+      if (f.kind == 'content_warnings' || f.kind == 'relationship_types')
+        continue;
       if (reasonHit.contains(fid)) continue;
       var contrib = m.wFac[fid] * (w / 10) * c.facetIdf[fid] / fn;
       if (f.kind == 'genre' || f.kind == 'anilist_tag') contrib *= 0.55;
@@ -733,9 +870,15 @@ class Recommender {
       }
     }
     final dimKey = bestDimName;
-    final stems = dimKey == null ? <String>[] : dimKey.split('_').where((w) => w.length > 3).toList();
+    final stems = dimKey == null
+        ? <String>[]
+        : dimKey.split('_').where((w) => w.length > 3).toList();
     String norm(String x) => x.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
-    final overlaps = picked.any((p) => stems.any((w) => norm(p).contains(norm(w).substring(0, norm(w).length - 1))));
+    final overlaps = picked.any(
+      (p) => stems.any(
+        (w) => norm(p).contains(norm(w).substring(0, norm(w).length - 1)),
+      ),
+    );
     if (dimPhrase != null && picked.length < 3 && !overlaps) {
       picked.add(dimPhrase);
     }
@@ -758,20 +901,21 @@ class Recommender {
       text = text[0].toUpperCase() + text.substring(1);
     }
     if (seqOf >= 0) {
-      text = 'Continues ${c.titles[seqOf].display} (rated ${_fmt(m.byIdx[seqOf]?.rating)}) — $text';
+      text =
+          'Continues ${c.titles[seqOf].display} (rated ${_fmt(m.byIdx[seqOf]?.rating)}) — $text';
     } else if (preOf >= 0) {
-      text = 'Prequel to ${c.titles[preOf].display} (rated ${_fmt(m.byIdx[preOf]?.rating)}) — $text';
+      text =
+          'Prequel to ${c.titles[preOf].display} (rated ${_fmt(m.byIdx[preOf]?.rating)}) — $text';
       anchor = null;
     } else if (anchor != null && bestA > 0.3) {
       anchorUse?[anchor] = (anchorUse[anchor] ?? 0) + 1;
       final r = m.byIdx[anchor]?.rating;
-      text = '$text, like ${c.titles[anchor].display}${r != null ? ' (you rated ${_fmt(r)})' : ''}';
+      text =
+          '$text, like ${c.titles[anchor].display}${r != null ? ' (you rated ${_fmt(r)})' : ''}';
     } else {
       anchor = null;
     }
-    final tags = <String>[
-      for (final p in picked.take(3)) p,
-    ];
+    final tags = <String>[for (final p in picked.take(3)) p];
     return ('$text.', anchor, tags);
   }
 
@@ -792,9 +936,11 @@ class Recommender {
     final rated = m.positives.length + m.negatives.length;
     final ratings = [
       for (final e in m.byIdx.values)
-        if (e.status == EntryStatus.watched && e.rating != null) e.rating!
+        if (e.status == EntryStatus.watched && e.rating != null) e.rating!,
     ];
-    final meanR = ratings.isEmpty ? 0.0 : ratings.reduce((a, b) => a + b) / ratings.length;
+    final meanR = ratings.isEmpty
+        ? 0.0
+        : ratings.reduce((a, b) => a + b) / ratings.length;
     if (!m.hasSignal) {
       return TasteSummary(0, 0, [], [], [], [], {});
     }
@@ -822,7 +968,8 @@ class Recommender {
       pref[d] = posMean - (nw > 0 ? 0.5 * negMean : 0.0);
       likedAvg[d] = pw > 0 ? pa / pw : 5.0;
     }
-    final order = List<int>.generate(D, (i) => i)..sort((a, b) => pref[b].abs().compareTo(pref[a].abs()));
+    final order = List<int>.generate(D, (i) => i)
+      ..sort((a, b) => pref[b].abs().compareTo(pref[a].abs()));
     final likes = <DimPref>[], avoids = <DimPref>[];
     for (final d in order) {
       if (pref[d].abs() < 0.35) continue;
@@ -841,6 +988,7 @@ class Recommender {
         sup[fid] = (sup[fid] ?? 0) + 1;
       }
     }
+
     for (final (i, s) in m.positives) {
       acc(i, s);
     }
@@ -853,8 +1001,11 @@ class Recommender {
       final reasonBoost = m.reasonFacets[fid] ?? 0;
       final support = sup[fid]!;
       if (support < 2 && reasonBoost == 0) return;
-      final strength = (nv / (den[fid]! + 1.5)) * c.facetIdf[fid] + reasonBoost * 0.8;
-      (strength > 0 ? fl : fa).add(FacetPref(f.kind, f.value, strength, support));
+      final strength =
+          (nv / (den[fid]! + 1.5)) * c.facetIdf[fid] + reasonBoost * 0.8;
+      (strength > 0 ? fl : fa).add(
+        FacetPref(f.kind, f.value, strength, support),
+      );
     });
     fl.sort((a, b) => b.strength.compareTo(a.strength));
     fa.sort((a, b) => a.strength.compareTo(b.strength));
@@ -883,11 +1034,21 @@ class Recommender {
     final disliked = <FacetPref>[];
     xCounts.forEach((k, n) {
       final parts = k.split('|');
-      if (parts.length == 2) disliked.add(FacetPref(parts[0], parts[1], -n.toDouble(), n));
+      if (parts.length == 2)
+        disliked.add(FacetPref(parts[0], parts[1], -n.toDouble(), n));
     });
     disliked.sort((a, b) => a.strength.compareTo(b.strength));
-    return TasteSummary(rated, meanR, likes.take(8).toList(), avoids.take(6).toList(),
-        fl.take(14).toList(), fa.take(8).toList(), rc, dislikedTags: disliked, dislikedAspects: nCounts.toList()..sort());
+    return TasteSummary(
+      rated,
+      meanR,
+      likes.take(8).toList(),
+      avoids.take(6).toList(),
+      fl.take(14).toList(),
+      fa.take(8).toList(),
+      rc,
+      dislikedTags: disliked,
+      dislikedAspects: nCounts.toList()..sort(),
+    );
   }
 
   (double, double) _meanStd(Float32List a) {
@@ -897,7 +1058,10 @@ class Recommender {
       s2 += x * x;
     }
     final mu = s / a.length;
-    return (mu, math.max(math.sqrt(math.max(s2 / a.length - mu * mu, 0)), 1e-6));
+    return (
+      mu,
+      math.max(math.sqrt(math.max(s2 / a.length - mu * mu, 0)), 1e-6),
+    );
   }
 
   static double _sigmoid(double x) => 1 / (1 + math.exp(-x));
@@ -916,5 +1080,13 @@ class _Cand {
   final int idx;
   final double score, base, ze, zf;
   final int seqOf, preOf;
-  _Cand(this.idx, this.score, this.base, this.ze, this.zf, this.seqOf, this.preOf);
+  _Cand(
+    this.idx,
+    this.score,
+    this.base,
+    this.ze,
+    this.zf,
+    this.seqOf,
+    this.preOf,
+  );
 }

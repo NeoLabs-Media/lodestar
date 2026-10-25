@@ -24,7 +24,8 @@ class WebUserStore implements UserStore {
   Map<String, dynamic> _read(String key) {
     try {
       final raw = web.window.localStorage.getItem(key);
-      if (raw != null && raw.isNotEmpty) return jsonDecode(raw) as Map<String, dynamic>;
+      if (raw != null && raw.isNotEmpty)
+        return jsonDecode(raw) as Map<String, dynamic>;
     } catch (_) {}
     return {};
   }
@@ -36,26 +37,29 @@ class WebUserStore implements UserStore {
 
   @override
   List<UserEntry> all() => [
-        for (final e in _entries.entries)
-          UserEntry(
-            id: int.parse(e.key),
-            key: e.value['k'] as String?,
-            status: EntryStatus.values.firstWhere((s) => s.name == e.value['s'], orElse: () => EntryStatus.watched),
-            rating: (e.value['r'] as num?)?.toDouble(),
-            reasons: ((e.value['x'] as List?) ?? const []).cast<String>().toSet(),
-            note: (e.value['n'] as String?) ?? '',
-            updatedAt: (e.value['u'] as num?)?.toInt() ?? 0,
-          )
-      ];
+    for (final e in _entries.entries)
+      UserEntry(
+        id: int.parse(e.key),
+        key: e.value['k'] as String?,
+        status: EntryStatus.values.firstWhere(
+          (s) => s.name == e.value['s'],
+          orElse: () => EntryStatus.watched,
+        ),
+        rating: (e.value['r'] as num?)?.toDouble(),
+        reasons: ((e.value['x'] as List?) ?? const []).cast<String>().toSet(),
+        note: (e.value['n'] as String?) ?? '',
+        updatedAt: (e.value['u'] as num?)?.toInt() ?? 0,
+      ),
+  ];
 
   void _set(UserEntry e) => _entries['${e.id}'] = {
-        if (e.key != null) 'k': e.key,
-        's': e.status.name,
-        if (e.rating != null) 'r': e.rating,
-        if (e.reasons.isNotEmpty) 'x': e.reasons.toList(),
-        if (e.note.isNotEmpty) 'n': e.note,
-        'u': e.updatedAt,
-      };
+    if (e.key != null) 'k': e.key,
+    's': e.status.name,
+    if (e.rating != null) 'r': e.rating,
+    if (e.reasons.isNotEmpty) 'x': e.reasons.toList(),
+    if (e.note.isNotEmpty) 'n': e.note,
+    'u': e.updatedAt,
+  };
 
   @override
   void put(UserEntry e) {

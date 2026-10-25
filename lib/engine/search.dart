@@ -4,8 +4,23 @@ import 'catalog_data.dart';
 
 String normalizeTitle(String s) {
   const map = {
-    'ō': 'o', 'ū': 'u', 'ā': 'a', 'ī': 'i', 'ē': 'e', 'ô': 'o', 'û': 'u', 'â': 'a', 'ä': 'a', 'ö': 'o',
-    'ü': 'u', 'é': 'e', 'è': 'e', 'ñ': 'n', 'ß': 'ss', 'Ō': 'o', 'Ū': 'u',
+    'ō': 'o',
+    'ū': 'u',
+    'ā': 'a',
+    'ī': 'i',
+    'ē': 'e',
+    'ô': 'o',
+    'û': 'u',
+    'â': 'a',
+    'ä': 'a',
+    'ö': 'o',
+    'ü': 'u',
+    'é': 'e',
+    'è': 'e',
+    'ñ': 'n',
+    'ß': 'ss',
+    'Ō': 'o',
+    'Ū': 'u',
   };
   final b = StringBuffer();
   for (final r in s.toLowerCase().runes) {
@@ -48,6 +63,7 @@ class TitleSearch {
         _owner.add(t.idx);
         _primary.add(primary);
       }
+
       add(t.title, true);
       add(t.titleEn, true);
       for (final s in t.synonyms) {
@@ -94,7 +110,11 @@ class TitleSearch {
     }
     final hits = [
       for (final e in best.entries)
-        SearchHit(e.key, e.value + 3.0 * math.log(c.titles[e.key].popularity + 10) / math.ln10, e.value)
+        SearchHit(
+          e.key,
+          e.value + 3.0 * math.log(c.titles[e.key].popularity + 10) / math.ln10,
+          e.value,
+        ),
     ]..sort((a, b) => b.score.compareTo(a.score));
     return hits.take(limit).toList();
   }
@@ -107,7 +127,11 @@ class TitleSearch {
       for (final w in words) {
         if ((w.length - t.length).abs() > 3 && w.length < t.length) continue;
         final lim = t.length <= 3 ? 0 : (t.length <= 6 ? 1 : 2);
-        var d = _lev(t, w.length > t.length ? w.substring(0, t.length) : w, lim);
+        var d = _lev(
+          t,
+          w.length > t.length ? w.substring(0, t.length) : w,
+          lim,
+        );
         if (d > 0 && w.length > t.length) {
           // typo with a deleted/added letter shifts the prefix window by one
           final k = math.min(w.length, t.length + 1);
@@ -132,8 +156,14 @@ class TitleSearch {
       var rowMin = cur[0];
       for (var j = 1; j <= b.length; j++) {
         final cost = a.codeUnitAt(i - 1) == b.codeUnitAt(j - 1) ? 0 : 1;
-        var v = math.min(math.min(prev[j] + 1, cur[j - 1] + 1), prev[j - 1] + cost);
-        if (i > 1 && j > 1 && a.codeUnitAt(i - 1) == b.codeUnitAt(j - 2) && a.codeUnitAt(i - 2) == b.codeUnitAt(j - 1)) {
+        var v = math.min(
+          math.min(prev[j] + 1, cur[j - 1] + 1),
+          prev[j - 1] + cost,
+        );
+        if (i > 1 &&
+            j > 1 &&
+            a.codeUnitAt(i - 1) == b.codeUnitAt(j - 2) &&
+            a.codeUnitAt(i - 2) == b.codeUnitAt(j - 1)) {
           v = math.min(v, (i > 2 ? prev[j - 1] : prev[j - 1]));
         }
         cur[j] = v;

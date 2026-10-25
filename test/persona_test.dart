@@ -34,28 +34,57 @@ class Persona {
 
 final personas = [
   Persona(
-      'slow-burn romance + bittersweet endings, low fanservice',
-      {'romance_slow_burn': 1.0, 'romance_centrality': .7, 'tearjerker': .3, 'fanservice': -.9},
-      {('ending_types', 'bittersweet'): 1.0, ('romance_dynamics', 'slow burn'): 1.0},
-      [('ending_types', 'bittersweet'), ('romance_dynamics', 'slow burn')]),
+    'slow-burn romance + bittersweet endings, low fanservice',
+    {
+      'romance_slow_burn': 1.0,
+      'romance_centrality': .7,
+      'tearjerker': .3,
+      'fanservice': -.9,
+    },
+    {
+      ('ending_types', 'bittersweet'): 1.0,
+      ('romance_dynamics', 'slow burn'): 1.0,
+    },
+    [('ending_types', 'bittersweet'), ('romance_dynamics', 'slow burn')],
+  ),
   Persona(
-      'dark psychological, high plot complexity',
-      {
-        'psychological_darkness': 1.0, 'plot_complexity': 1.0, 'mystery_intrigue': .6,
-        'moral_ambiguity': .5, 'cuteness': -.6, 'wholesomeness': -.5
-      },
-      {},
-      []),
+    'dark psychological, high plot complexity',
+    {
+      'psychological_darkness': 1.0,
+      'plot_complexity': 1.0,
+      'mystery_intrigue': .6,
+      'moral_ambiguity': .5,
+      'cuteness': -.6,
+      'wholesomeness': -.5,
+    },
+    {},
+    [],
+  ),
   Persona(
-      'cozy slice-of-life comedy',
-      {'slice_of_life': 1.0, 'wholesomeness': 1.0, 'comedy': .6, 'cuteness': .5, 'violence_gore': -.7, 'tension_suspense': -.7},
-      {},
-      []),
+    'cozy slice-of-life comedy',
+    {
+      'slice_of_life': 1.0,
+      'wholesomeness': 1.0,
+      'comedy': .6,
+      'cuteness': .5,
+      'violence_gore': -.7,
+      'tension_suspense': -.7,
+    },
+    {},
+    [],
+  ),
   Persona(
-      'hype battle shounen with rivalries',
-      {'action_intensity': 1.0, 'hype': 1.0, 'rivalry_competition': .8, 'visual_spectacle_expected': .4, 'romance_centrality': -.3},
-      {},
-      []),
+    'hype battle shounen with rivalries',
+    {
+      'action_intensity': 1.0,
+      'hype': 1.0,
+      'rivalry_competition': .8,
+      'visual_spectacle_expected': .4,
+      'romance_centrality': -.3,
+    },
+    {},
+    [],
+  ),
 ];
 
 List<UserEntry> simulate(CatalogData c, Persona p, int seed, {int n = 40}) {
@@ -82,7 +111,14 @@ List<UserEntry> simulate(CatalogData c, Persona p, int seed, {int n = 40}) {
         }
       }
     }
-    entries.add(UserEntry(id: c.titles[i].id, status: EntryStatus.watched, rating: rating, reasons: reasons));
+    entries.add(
+      UserEntry(
+        id: c.titles[i].id,
+        status: EntryStatus.watched,
+        rating: rating,
+        reasons: reasons,
+      ),
+    );
   }
   return entries;
 }
@@ -114,32 +150,51 @@ void main() {
           if (!seenIds.contains(c.titles[i].id)) us.add(p.utility(c, i));
         }
         final mu = us.reduce((a, b) => a + b) / us.length;
-        final sd = math.sqrt(us.map((x) => (x - mu) * (x - mu)).reduce((a, b) => a + b) / us.length);
-        final topMean = recs.map((r) => p.utility(c, r.idx)).reduce((a, b) => a + b) / recs.length;
+        final sd = math.sqrt(
+          us.map((x) => (x - mu) * (x - mu)).reduce((a, b) => a + b) /
+              us.length,
+        );
+        final topMean =
+            recs.map((r) => p.utility(c, r.idx)).reduce((a, b) => a + b) /
+            recs.length;
         final gap = (topMean - mu) / sd;
         final unpopular = recs.where((r) => c.obscurity[r.idx] > 0.5).length;
         final franchise = <int, int>{};
         for (final r in recs) {
-          franchise[c.franchise[r.idx]] = (franchise[c.franchise[r.idx]] ?? 0) + 1;
+          franchise[c.franchise[r.idx]] =
+              (franchise[c.franchise[r.idx]] ?? 0) + 1;
         }
         final maxFranchise = franchise.values.reduce(math.max);
         // ignore: avoid_print
-        print('\n== ${p.name}\n   utility gap ${gap.toStringAsFixed(2)} sd, unpopular(top-50%-obscure) $unpopular/30, '
-            'max per franchise $maxFranchise');
+        print(
+          '\n== ${p.name}\n   utility gap ${gap.toStringAsFixed(2)} sd, unpopular(top-50%-obscure) $unpopular/30, '
+          'max per franchise $maxFranchise',
+        );
         for (final r in recs.take(8)) {
           final t = c.titles[r.idx];
           // ignore: avoid_print
-          print('   ${r.match.toStringAsFixed(0)}%  ${t.display} (${t.format}, pop ${t.popularity})  ${r.why}');
+          print(
+            '   ${r.match.toStringAsFixed(0)}%  ${t.display} (${t.format}, pop ${t.popularity})  ${r.why}',
+          );
         }
-        expect(gap, greaterThan(1.2), reason: 'top picks should score well on the hidden utility');
-        expect(unpopular, greaterThanOrEqualTo(8), reason: 'slider at 0.7 must surface unpopular titles');
+        expect(
+          gap,
+          greaterThan(1.2),
+          reason: 'top picks should score well on the hidden utility',
+        );
+        expect(
+          unpopular,
+          greaterThanOrEqualTo(8),
+          reason: 'slider at 0.7 must surface unpopular titles',
+        );
         expect(maxFranchise, lessThanOrEqualTo(3));
         expect(recs.every((r) => r.why.isNotEmpty), isTrue);
       });
 
       test('${p.name}: leave-one-out', () {
         final entries = simulate(c, p, 11);
-        final liked = entries.where((e) => (e.rating ?? 0) >= 8.5).toList()..shuffle(math.Random(3));
+        final liked = entries.where((e) => (e.rating ?? 0) >= 8.5).toList()
+          ..shuffle(math.Random(3));
         final ranks = <double>[];
         for (final held in liked.take(8)) {
           final rest = entries.where((e) => e.id != held.id).toList();
@@ -152,8 +207,10 @@ void main() {
         ranks.sort();
         final median = ranks[ranks.length ~/ 2];
         // ignore: avoid_print
-        print('   LOO ${p.name}: median held-out rank percentile ${(median * 100).toStringAsFixed(1)}% '
-            '(random = 50%)');
+        print(
+          '   LOO ${p.name}: median held-out rank percentile ${(median * 100).toStringAsFixed(1)}% '
+          '(random = 50%)',
+        );
         expect(median, lessThan(0.12));
       });
     }
@@ -161,14 +218,22 @@ void main() {
 
   test('cold start: five titles give sensible output', () {
     final p = personas[0];
-    final entries = simulate(c, p, 5, n: 40).where((e) => (e.rating ?? 0) >= 9).take(5).toList();
+    final entries = simulate(
+      c,
+      p,
+      5,
+      n: 40,
+    ).where((e) => (e.rating ?? 0) >= 9).take(5).toList();
     final model = rec.fit(entries);
     final recs = rec.recommend(model, Controls(), count: 20);
     expect(recs.length, 20);
     final us = [for (var i = 0; i < c.n; i++) p.utility(c, i)];
     final mu = us.reduce((a, b) => a + b) / us.length;
-    final sd = math.sqrt(us.map((x) => (x - mu) * (x - mu)).reduce((a, b) => a + b) / us.length);
-    final topMean = recs.map((r) => us[r.idx]).reduce((a, b) => a + b) / recs.length;
+    final sd = math.sqrt(
+      us.map((x) => (x - mu) * (x - mu)).reduce((a, b) => a + b) / us.length,
+    );
+    final topMean =
+        recs.map((r) => us[r.idx]).reduce((a, b) => a + b) / recs.length;
     expect((topMean - mu) / sd, greaterThan(0.6));
   });
 
@@ -177,12 +242,15 @@ void main() {
     final model = rec.fit(simulate(c, p, 3));
     double avgObs(double slider) {
       final r = rec.recommend(model, Controls(obscurity: slider), count: 30);
-      return r.map((x) => c.obscurity[x.idx]).reduce((a, b) => a + b) / r.length;
+      return r.map((x) => c.obscurity[x.idx]).reduce((a, b) => a + b) /
+          r.length;
     }
 
     final lo = avgObs(0.0), hi = avgObs(1.0);
     // ignore: avoid_print
-    print('   avg obscurity slider 0 -> ${lo.toStringAsFixed(2)}, slider 1 -> ${hi.toStringAsFixed(2)}');
+    print(
+      '   avg obscurity slider 0 -> ${lo.toStringAsFixed(2)}, slider 1 -> ${hi.toStringAsFixed(2)}',
+    );
     expect(hi, greaterThan(lo + 0.15));
   });
 }

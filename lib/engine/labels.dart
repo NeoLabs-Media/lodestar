@@ -90,7 +90,10 @@ String facetPhrase(String kind, String value) {
 
 /// (high-phrase, low-phrase) per dimension.
 const dimPhrases = <String, (String, String)>{
-  'romance_centrality': ('romance at the heart of the story', 'little to no romance'),
+  'romance_centrality': (
+    'romance at the heart of the story',
+    'little to no romance',
+  ),
   'romance_slow_burn': ('a slow-burning romance', 'quick-moving romance'),
   'romantic_payoff': ('a satisfying romantic payoff', 'no romantic payoff'),
   'fanservice': ('plenty of fanservice', 'almost no fanservice'),
@@ -109,10 +112,19 @@ const dimPhrases = <String, (String, String)>{
   'mystery_intrigue': ('mystery-driven plotting', 'no puzzle-box mysteries'),
   'plot_complexity': ('intricate plotting', 'a simple, clear plot'),
   'worldbuilding_depth': ('deep worldbuilding', 'minimal worldbuilding'),
-  'character_depth': ('psychologically rich characters', 'light character work'),
+  'character_depth': (
+    'psychologically rich characters',
+    'light character work',
+  ),
   'character_growth': ('profound character growth', 'static characters'),
-  'protagonist_power': ('an overpowered protagonist', 'an underdog protagonist'),
-  'protagonist_agency': ('a protagonist who drives the story', 'a protagonist carried by events'),
+  'protagonist_power': (
+    'an overpowered protagonist',
+    'an underdog protagonist',
+  ),
+  'protagonist_agency': (
+    'a protagonist who drives the story',
+    'a protagonist carried by events',
+  ),
   'ensemble_focus': ('a true ensemble cast', 'a single-protagonist focus'),
   'moral_ambiguity': ('moral ambiguity', 'clear good-vs-evil'),
   'philosophical_depth': ('philosophical depth', 'no philosophising'),
@@ -132,7 +144,10 @@ const dimPhrases = <String, (String, String)>{
   'cuteness': ('moe cuteness', 'no cutesy tone'),
   'coolness_style': ('dripping style', 'a plain style'),
   'visual_spectacle_expected': ('spectacular animation', 'modest visuals'),
-  'newcomer_accessibility': ('easy entry for newcomers', 'a steep entry barrier'),
+  'newcomer_accessibility': (
+    'easy entry for newcomers',
+    'a steep entry barrier',
+  ),
   'rewatch_value': ('high rewatch value', 'little rewatch value'),
   'commitment': ('a long commitment', 'a short commitment'),
 };
@@ -144,33 +159,72 @@ class GenericReason {
   final String key, label;
   final Map<String, double> dims; // dimension -> weight
   final List<String> facetKinds; // facet kinds that are "about" this reason
-  const GenericReason(this.key, this.label, this.dims, {this.facetKinds = const []});
+  const GenericReason(
+    this.key,
+    this.label,
+    this.dims, {
+    this.facetKinds = const [],
+  });
 }
 
 const genericReasons = <GenericReason>[
-  GenericReason('characters', 'Characters',
-      {'character_depth': 1, 'character_growth': .8, 'ensemble_focus': .3},
-      facetKinds: ['archetypes', 'character_arc_types']),
-  GenericReason('romance', 'Romance',
-      {'romance_centrality': 1, 'romantic_payoff': .6, 'romance_slow_burn': .4},
-      facetKinds: ['romance_dynamics', 'romance_payoffs']),
-  GenericReason('story', 'Story / plot',
-      {'plot_complexity': .9, 'serialization': .6, 'mystery_intrigue': .5},
-      facetKinds: ['story_structures']),
-  GenericReason('ending', 'The ending', {'ending_satisfaction': 1, 'emotional_catharsis': .5},
-      facetKinds: ['ending_types']),
-  GenericReason('world', 'World & lore', {'worldbuilding_depth': 1, 'realism': -.1},
-      facetKinds: ['setting_types']),
-  GenericReason('emotion', 'Emotional impact',
-      {'tearjerker': .9, 'emotional_catharsis': .8, 'tragedy': .5},
-      facetKinds: ['moods']),
-  GenericReason('humor', 'Humor', {'comedy': 1, 'absurdity': .3}, facetKinds: ['comedy_styles']),
-  GenericReason('pacing', 'Pacing', {'pacing_speed': .7, 'hype': .5, 'tension_suspense': .4}),
-  GenericReason('visuals', 'Visuals & music',
-      {'visual_spectacle_expected': 1, 'coolness_style': .8}),
-  GenericReason('ideas', 'Themes & ideas',
-      {'philosophical_depth': 1, 'moral_ambiguity': .5, 'mature_themes': .4},
-      facetKinds: ['themes']),
+  GenericReason(
+    'characters',
+    'Characters',
+    {'character_depth': 1, 'character_growth': .8, 'ensemble_focus': .3},
+    facetKinds: ['archetypes', 'character_arc_types'],
+  ),
+  GenericReason(
+    'romance',
+    'Romance',
+    {'romance_centrality': 1, 'romantic_payoff': .6, 'romance_slow_burn': .4},
+    facetKinds: ['romance_dynamics', 'romance_payoffs'],
+  ),
+  GenericReason(
+    'story',
+    'Story / plot',
+    {'plot_complexity': .9, 'serialization': .6, 'mystery_intrigue': .5},
+    facetKinds: ['story_structures'],
+  ),
+  GenericReason(
+    'ending',
+    'The ending',
+    {'ending_satisfaction': 1, 'emotional_catharsis': .5},
+    facetKinds: ['ending_types'],
+  ),
+  GenericReason(
+    'world',
+    'World & lore',
+    {'worldbuilding_depth': 1, 'realism': -.1},
+    facetKinds: ['setting_types'],
+  ),
+  GenericReason(
+    'emotion',
+    'Emotional impact',
+    {'tearjerker': .9, 'emotional_catharsis': .8, 'tragedy': .5},
+    facetKinds: ['moods'],
+  ),
+  GenericReason(
+    'humor',
+    'Humor',
+    {'comedy': 1, 'absurdity': .3},
+    facetKinds: ['comedy_styles'],
+  ),
+  GenericReason('pacing', 'Pacing', {
+    'pacing_speed': .7,
+    'hype': .5,
+    'tension_suspense': .4,
+  }),
+  GenericReason('visuals', 'Visuals & music', {
+    'visual_spectacle_expected': 1,
+    'coolness_style': .8,
+  }),
+  GenericReason(
+    'ideas',
+    'Themes & ideas',
+    {'philosophical_depth': 1, 'moral_ambiguity': .5, 'mature_themes': .4},
+    facetKinds: ['themes'],
+  ),
 ];
 
 GenericReason? genericReasonByKey(String key) {
