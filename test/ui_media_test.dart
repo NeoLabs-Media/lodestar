@@ -62,7 +62,7 @@ void main() {
   testWidgets(
     'mixed catalog: media chips + kind badges; chips filter the feed',
     (t) async {
-      final app = await boot(t, 'mixed_v2');
+      final app = await boot(t, 'mixed');
       await show(t, app);
       for (final label in ['All media', 'Anime', 'Movies', 'TV']) {
         expect(

@@ -24,7 +24,7 @@
 
 1. **Add what you've seen**: search, paste a list, import a file, or pull your whole Crunchyroll history with one bookmark click (no password, no extension).
 2. **Rate and say why**: a few seconds per title.
-3. **Get a feed of unwatched picks**: filter by category, format, mood or length.
+3. **Get a feed of unwatched picks**: filter by media type, category and mood, plus options that fit what you're browsing (anime: format, episodes, studio · movies: runtime, decade, director, country · TV: seasons, status, network). Each type remembers its own filters.
 4. **Check your taste profile**: a plain-language summary that updates as you rate.
 
 ## The catalog

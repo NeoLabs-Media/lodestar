@@ -150,15 +150,17 @@ class _DetailPageState extends State<DetailPage> {
         ),
       _Section(
         title: 'Premise',
-        trailing: FilterChip(
-          label: const Text('Spoilers'),
-          avatar: Icon(
-            spoilers ? Icons.visibility : Icons.visibility_off,
-            size: 16,
-          ),
-          selected: spoilers,
-          onSelected: (v) => setState(() => spoilers = v),
-        ),
+        trailing: ((d['full'] as String?)?.isEmpty ?? true)
+            ? null
+            : FilterChip(
+                label: const Text('Spoilers'),
+                avatar: Icon(
+                  spoilers ? Icons.visibility : Icons.visibility_off,
+                  size: 16,
+                ),
+                selected: spoilers,
+                onSelected: (v) => setState(() => spoilers = v),
+              ),
         child: AnimatedSize(
           duration: const Duration(milliseconds: 200),
           alignment: Alignment.topCenter,

@@ -571,21 +571,8 @@ class AppState extends ChangeNotifier {
 
   /// Filters survive restarts (stored as JSON in the settings table).
   void saveControls() {
-    final c = controls;
-    users.setSetting(
-      'filters',
-      jsonEncode({
-        'obscurity': c.obscurity,
-        'formats': c.formats.toList(),
-        'maxEpisodes': c.maxEpisodes,
-        'moods': c.moods.toList(),
-        'excludeWarnings': c.excludeWarnings.toList(),
-        'categories': c.categories.toList(),
-        'kinds': c.kinds.toList(),
-        'minYear': c.minYear,
-      }),
-    );
-    users.setSetting('obscurity', c.obscurity.toStringAsFixed(3));
+    users.setSetting('filters', jsonEncode(controls.toJson()));
+    users.setSetting('obscurity', controls.obscurity.toStringAsFixed(3));
   }
 
   void _loadControls() {
@@ -595,32 +582,14 @@ class AppState extends ChangeNotifier {
     final raw = users.setting('filters');
     if (raw == null) return;
     try {
-      final m = jsonDecode(raw) as Map;
-      controls = Controls(
-        obscurity: (m['obscurity'] as num?)?.toDouble() ?? controls.obscurity,
-        formats: ((m['formats'] as List?) ?? const []).cast<String>().toSet(),
-        maxEpisodes: m['maxEpisodes'] as int?,
-        moods: ((m['moods'] as List?) ?? const []).cast<String>().toSet(),
-        excludeWarnings: ((m['excludeWarnings'] as List?) ?? const [])
-            .cast<String>()
-            .toSet(),
-        categories: ((m['categories'] as List?) ?? const [])
-            .cast<String>()
-            .toSet(),
-        kinds: ((m['kinds'] as List?) ?? const []).cast<String>().toSet(),
-        minYear: m['minYear'] as int?,
+      controls = Controls.fromJson(
+        (jsonDecode(raw) as Map).cast<String, dynamic>(),
       );
     } catch (_) {}
   }
 
   int get activeFilterCount =>
-      controls.formats.length +
-      controls.categories.length +
-      (data.kinds.length > 1 ? controls.kinds.length : 0) +
-      controls.moods.length +
-      controls.excludeWarnings.length +
-      (controls.maxEpisodes != null ? 1 : 0) +
-      (controls.minYear != null ? 1 : 0);
+      controls.activeCount(multiKindCatalog: data.kinds.length > 1);
 
   void _changed({bool debounced = false}) {
     notifyListeners();

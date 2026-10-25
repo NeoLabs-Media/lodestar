@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'catalog_data.dart';
 import 'categories.dart';
+import 'filters.dart';
 import 'labels.dart';
 
 enum EntryStatus { watched, planned, notInterested, ignored }
@@ -41,28 +42,82 @@ class UserEntry {
 class Controls {
   /// 0 = popular picks … 1 = deep cuts.
   double obscurity;
-  Set<String> formats; // TV, MOVIE, SHORT, OVA (empty = any)
-  int? maxEpisodes;
-  Set<String> moods;
-  Set<String> excludeWarnings;
-  Set<String> categories; // any-of, see categories.dart
   Set<String>
   kinds; // media kinds to include: anime | movie | tv (empty = mix everything)
-  int? minYear;
+  /// Filter state per scope ('all', 'anime', 'movie', 'tv'); only the active scope's filters apply.
+  final Map<String, ScopeFilters> scopes = {};
+
+  /// One selected kind -> that kind's scope (with its specific filters); anything else -> 'all' (common filters).
+  String get scope => kinds.length == 1 ? kinds.first : 'all';
+  ScopeFilters get active => scopes.putIfAbsent(scope, ScopeFilters.new);
+  ScopeFilters scopeFilters(String name) =>
+      scopes.putIfAbsent(name, ScopeFilters.new);
+
+  // Convenience accessors for the active scope (the pre-per-kind API).
+  Set<String> get formats => active.formats;
+  Set<String> get moods => active.moods;
+  Set<String> get excludeWarnings => active.excludeWarnings;
+  Set<String> get categories => active.categories;
+  int? get maxEpisodes => active.maxEpisodes;
+  set maxEpisodes(int? v) => active.maxEpisodes = v;
+  int? get minYear => active.yearMin;
+  set minYear(int? v) => active.yearMin = v;
+
   Controls({
     this.obscurity = 0.45,
     Set<String>? formats,
-    this.maxEpisodes,
+    int? maxEpisodes,
     Set<String>? moods,
     Set<String>? excludeWarnings,
     Set<String>? categories,
     Set<String>? kinds,
-    this.minYear,
-  }) : formats = formats ?? {},
-       moods = moods ?? {},
-       excludeWarnings = excludeWarnings ?? {},
-       categories = categories ?? {},
-       kinds = kinds ?? {};
+    int? minYear,
+  }) : kinds = kinds ?? {} {
+    final a = active;
+    a.formats.addAll(formats ?? const {});
+    a.moods.addAll(moods ?? const {});
+    a.excludeWarnings.addAll(excludeWarnings ?? const {});
+    a.categories.addAll(categories ?? const {});
+    a.maxEpisodes = maxEpisodes;
+    a.yearMin = minYear;
+  }
+
+  Map<String, dynamic> toJson() => {
+    'obscurity': obscurity,
+    'kinds': kinds.toList(),
+    'scopes': {for (final e in scopes.entries) e.key: e.value.toJson()},
+  };
+
+  /// Reads the saved form; also understands the older flat form (one global filter set).
+  static Controls fromJson(Map<String, dynamic> m) {
+    final c = Controls(obscurity: (m['obscurity'] as num?)?.toDouble() ?? 0.45);
+    c.kinds = ((m['kinds'] as List?) ?? const []).cast<String>().toSet();
+    final sc = m['scopes'];
+    if (sc is Map) {
+      sc.forEach(
+        (k, v) => c.scopes['$k'] = ScopeFilters.fromJson(
+          (v as Map).cast<String, dynamic>(),
+        ),
+      );
+    } else {
+      c.scopes[c.scope] = ScopeFilters.fromJson(m); // legacy: flat keys
+    }
+    return c;
+  }
+
+  /// Number of active hard filters (plus the media restriction) for badges.
+  int activeCount({bool multiKindCatalog = false}) =>
+      active.activeCount(scope) + (multiKindCatalog ? kinds.length : 0);
+
+  /// Short text of everything that is restricting the feed, e.g. "movies · 80–120 min, PG-13" ('' = nothing).
+  String describe() {
+    final names = {'anime': 'anime', 'movie': 'movies', 'tv': 'TV'};
+    final head = kinds.isEmpty
+        ? ''
+        : kinds.map((k) => names[k] ?? k).join(' + ');
+    final tail = active.describe(scope);
+    return [head, tail].where((x) => x.isNotEmpty).join(' · ');
+  }
 }
 
 class Rec {
@@ -550,6 +605,19 @@ class Recommender {
     return out;
   }();
 
+  /// How many titles of the given kinds (empty = all) belong to a category.
+  int categoryCount(String key, Set<String> kinds) {
+    final ci = categories.indexWhere((x) => x.key == key);
+    if (ci < 0) return 0;
+    var n = 0;
+    for (var i = 0; i < c.n; i++) {
+      if ((kinds.isEmpty || kinds.contains(c.titles[i].kind)) &&
+          (_catMask[i] & (1 << ci)) != 0)
+        n++;
+    }
+    return n;
+  }
+
   bool inCategory(int idx, String key) {
     final ci = categories.indexWhere((x) => x.key == key);
     return ci >= 0 && (_catMask[idx] & (1 << ci)) != 0;
@@ -558,48 +626,55 @@ class Recommender {
   bool _passes(int i, Controls ctl) {
     final t = c.titles[i];
     if (ctl.kinds.isNotEmpty && !ctl.kinds.contains(t.kind)) return false;
-    if (ctl.categories.isNotEmpty) {
-      var ok = false;
-      for (final key in ctl.categories) {
-        if (inCategory(i, key)) {
-          ok = true;
-          break;
-        }
-      }
-      if (!ok) return false;
-    }
-    if (ctl.formats.isNotEmpty) {
-      final f = t.format ?? '';
-      final g = (f == 'TV')
-          ? 'TV'
-          : (f == 'MOVIE')
-          ? 'MOVIE'
-          : (f == 'TV_SHORT')
-          ? 'SHORT'
-          : 'OVA';
-      if (!ctl.formats.contains(g)) return false;
-    }
-    if (ctl.maxEpisodes != null && (t.episodes ?? 0) > ctl.maxEpisodes!)
+    final f = ctl.active;
+    if (f.categories.isNotEmpty && !f.categories.any((k) => inCategory(i, k)))
       return false;
-    if (ctl.minYear != null && (t.year ?? 0) < ctl.minYear!) return false;
-    if (ctl.moods.isNotEmpty || ctl.excludeWarnings.isNotEmpty) {
-      var moodOk = ctl.moods.isEmpty;
+    if (!f.passes(t, ctl.scope)) return false;
+    if (f.moods.isNotEmpty || f.excludeWarnings.isNotEmpty) {
+      var moodOk = f.moods.isEmpty;
       for (final (fid, w) in c.facetsOf(i)) {
-        final f = c.vocab[fid];
+        final fd = c.vocab[fid];
         if (!moodOk &&
-            f.kind == 'moods' &&
+            fd.kind == 'moods' &&
             w >= 4 &&
-            ctl.moods.contains(f.value))
+            f.moods.contains(fd.value))
           moodOk = true;
-        if (f.kind == 'content_warnings' &&
+        if (fd.kind == 'content_warnings' &&
             w >= 3 &&
-            ctl.excludeWarnings.contains(f.value)) {
+            f.excludeWarnings.contains(fd.value))
           return false;
-        }
       }
       if (!moodOk) return false;
     }
     return true;
+  }
+
+  /// Does title [idx] satisfy the hard filters of [ctl]?
+  bool passes(int idx, Controls ctl) => _passes(idx, ctl);
+
+  /// Titles that pass [ctl], best first by quality then popularity (no taste involved), at most [n].
+  List<int> browse(Controls ctl, {int n = 8, Set<int> exclude = const {}}) {
+    final ids =
+        [
+          for (var i = 0; i < c.n; i++)
+            if (!exclude.contains(i) && _passes(i, ctl)) i,
+        ]..sort((a, b) {
+          final q = c.qual[b].compareTo(c.qual[a]);
+          return q != 0
+              ? q
+              : c.titles[b].popularity.compareTo(c.titles[a].popularity);
+        });
+    return ids.take(n).toList();
+  }
+
+  /// The recommender's view of one title for this user: match %, explanation (null if it is already in
+  /// the library, which is excluded from ranking).
+  Rec? scoreOne(int idx, TasteModel m, {Controls? controls}) {
+    final ranked = _rank(m, controls ?? Controls(obscurity: 0.33));
+    for (final cand in ranked) {
+      if (cand.idx == idx) return _toRec(cand, m);
+    }
+    return null;
   }
 
   /// Base (taste-only) scores for every title plus z-normalisation stats.
@@ -632,7 +707,11 @@ class Recommender {
     final pool = scored.take(300).toList();
     final chosen = diversify ? _mmr(pool, m, count) : pool.take(count).toList();
     final use = <int, int>{};
-    return [for (final s in chosen) _toRec(s, m, anchorUse: use)];
+    final note = ctl.describe();
+    return [
+      for (final s in chosen)
+        _withFilterNote(_toRec(s, m, anchorUse: use), note),
+    ];
   }
 
   /// All unseen titles ranked by raw score (no diversification); for evaluation.
@@ -740,6 +819,18 @@ class Recommender {
     return chosen;
   }
 
+  Rec _withFilterNote(Rec r, String note) => note.isEmpty
+      ? r
+      : Rec(
+          r.idx,
+          r.score,
+          r.match,
+          '${r.why} Within your filters ($note).',
+          r.anchor,
+          r.gem,
+          r.tags,
+        );
+
   /// "Surprise me": a good match that is deliberately off the beaten path.
   Rec? surprise(TasteModel m, Controls ctl, {int? seed}) {
     final ranked = _rank(m, ctl);
@@ -767,14 +858,17 @@ class Recommender {
       r -= weights[k];
       if (r <= 0) {
         final rec = _toRec(top[k], m);
-        return Rec(
-          rec.idx,
-          rec.score,
-          rec.match,
-          'Off the beaten path: ${rec.why}',
-          rec.anchor,
-          rec.gem,
-          rec.tags,
+        return _withFilterNote(
+          Rec(
+            rec.idx,
+            rec.score,
+            rec.match,
+            'Off the beaten path: ${rec.why}',
+            rec.anchor,
+            rec.gem,
+            rec.tags,
+          ),
+          ctl.describe(),
         );
       }
     }

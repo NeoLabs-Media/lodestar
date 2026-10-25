@@ -89,8 +89,10 @@ final personas = [
 
 List<UserEntry> simulate(CatalogData c, Persona p, int seed, {int n = 40}) {
   final rnd = math.Random(seed);
-  final popular = List<int>.generate(c.n, (i) => i)
-    ..sort((a, b) => c.titles[b].popularity.compareTo(c.titles[a].popularity));
+  final popular = [
+    for (var i = 0; i < c.n; i++)
+      if (c.titles[i].kind == 'anime') i,
+  ]..sort((a, b) => c.titles[b].popularity.compareTo(c.titles[a].popularity));
   final pool = popular.take(900).toList()..shuffle(rnd);
   final sample = pool.take(n).toList();
   final us = {for (final i in sample) i: p.utility(c, i)};
@@ -199,7 +201,10 @@ void main() {
         for (final held in liked.take(8)) {
           final rest = entries.where((e) => e.id != held.id).toList();
           final model = rec.fit(rest);
-          final ranked = rec._rankForTest(model);
+          final ranked = rec.rankAll(
+            model,
+            controls: Controls(obscurity: 0.33, kinds: {'anime'}),
+          ); // the persona only watched anime
           final hi = c.idToIdx[held.id]!;
           final pos = ranked.indexOf(hi);
           ranks.add(pos / ranked.length);
@@ -253,8 +258,4 @@ void main() {
     );
     expect(hi, greaterThan(lo + 0.15));
   });
-}
-
-extension on Recommender {
-  List<int> _rankForTest(TasteModel m) => rankAll(m);
 }

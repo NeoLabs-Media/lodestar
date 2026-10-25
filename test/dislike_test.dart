@@ -165,7 +165,7 @@ void main() {
   ) async {
     final dir = Directory.systemTemp.createTempSync('lodestar_dis');
     addTearDown(() => dir.deleteSync(recursive: true));
-    File('test/fixtures/mixed_v2.db').copySync('${dir.path}/catalog_custom.db');
+    File('test/fixtures/mixed.db').copySync('${dir.path}/catalog_custom.db');
     final u = UserStore.open('${dir.path}/user.db')
       ..setSetting('catalog_source', 'file');
     u.close();

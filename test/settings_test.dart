@@ -113,29 +113,34 @@ void main() {
 }
 
 void filterPersistenceTest() {
-  test('filters persist across restarts', () async {
-    final d = Directory.systemTemp.createTempSync('atlas_flt');
+  test('filters persist across restarts, per media kind', () async {
+    final d = Directory.systemTemp.createTempSync('lodestar_flt');
     addTearDown(() => d.deleteSync(recursive: true));
     final a = AppState();
     await a.init(supportDirOverride: d.path);
-    a.setControls(
-      a.controls
-        ..formats = {'TV'}
-        ..maxEpisodes = 26
-        ..moods = {'cozy'}
-        ..excludeWarnings = {'gore'}
-        ..minYear = 2010
-        ..obscurity = 0.9,
-    );
-    expect(a.activeFilterCount, 5);
+    final c = a.controls;
+    c.obscurity = 0.9;
+    c.active.moods.add('cozy'); // scope "all"
+    c.kinds = {'movie'};
+    c.active.runtimeMax = 120;
+    c.active.countries.add('FR');
+    c.kinds = {'anime'};
+    c.active.formats.add('TV');
+    c.active.maxEpisodes = 26;
+    c.active.yearMin = 2010;
+    a.setControls(c);
+    expect(a.controls.activeCount(), 3);
     a.users.close();
     final b = AppState();
     await b.init(supportDirOverride: d.path);
-    expect(b.controls.formats, {'TV'});
-    expect(b.controls.maxEpisodes, 26);
-    expect(b.controls.moods, {'cozy'});
-    expect(b.controls.excludeWarnings, {'gore'});
-    expect(b.controls.minYear, 2010);
-    expect(b.controls.obscurity, 0.9);
+    final r = b.controls;
+    expect(r.obscurity, 0.9);
+    expect(r.kinds, {'anime'});
+    expect(r.scopeFilters('anime').formats, {'TV'});
+    expect(r.scopeFilters('anime').maxEpisodes, 26);
+    expect(r.scopeFilters('anime').yearMin, 2010);
+    expect(r.scopeFilters('movie').runtimeMax, 120);
+    expect(r.scopeFilters('movie').countries, {'FR'});
+    expect(r.scopeFilters('all').moods, {'cozy'});
   });
 }
