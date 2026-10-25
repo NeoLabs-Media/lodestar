@@ -292,26 +292,31 @@ class _CategoryStrip extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         padding: EdgeInsets.symmetric(horizontal: pad, vertical: 14),
         children: [
-          if (app.data.kinds.length > 1) ...[
-            for (final k in [
-              null,
-              ...const ['anime', 'movie', 'tv'].where(app.data.kinds.contains),
-            ])
+          ...[
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ChoiceChip(
+                showCheckmark: false,
+                label: const Text('All media'),
+                selected: c.kinds.isEmpty,
+                onSelected: (_) {
+                  c.kinds.clear();
+                  app.setControls(c);
+                },
+              ),
+            ),
+            for (final k in mediaKinds)
               Padding(
                 padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(
-                  showCheckmark: false,
-                  label: Text(
-                    k == null
-                        ? 'All media'
-                        : {'anime': 'Anime', 'movie': 'Movies', 'tv': 'TV'}[k]!,
-                  ),
-                  selected: k == null
-                      ? c.kinds.isEmpty
-                      : (c.kinds.length == 1 && c.kinds.contains(k)),
+                child: KindChip(
+                  kind: k,
+                  choice: true,
+                  available: app.data.kinds.contains(k),
+                  selected: c.kinds.length == 1 && c.kinds.contains(k),
                   onSelected: (_) {
-                    c.kinds.clear();
-                    if (k != null) c.kinds.add(k);
+                    c.kinds
+                      ..clear()
+                      ..add(k);
                     app.setControls(c);
                   },
                 ),

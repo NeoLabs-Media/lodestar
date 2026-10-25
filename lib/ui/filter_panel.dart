@@ -5,6 +5,7 @@ import '../app_state.dart';
 import '../engine/categories.dart';
 import '../engine/recommender.dart';
 import 'theme.dart';
+import 'widgets.dart';
 
 /// Opens the filter sheet. By default it edits the For-you feed's filters; the assistant passes its own
 /// [controls] (and a save callback) so the same sheet edits the chat's filters instead.
@@ -230,36 +231,33 @@ class FilterPanel extends StatelessWidget {
               },
             ),
           ),
-          if (d.kinds.length > 1)
-            section(
-              'Media',
-              Wrap(
-                spacing: 8,
-                children: [
-                  for (final k in const [
-                    'anime',
-                    'movie',
-                    'tv',
-                  ].where(d.kinds.contains))
-                    FilterChip(
-                      label: Text(_kindNames[k]!),
-                      selected: c.kinds.contains(k),
-                      onSelected: (v) =>
-                          upd(() => v ? c.kinds.add(k) : c.kinds.remove(k)),
-                    ),
-                ],
-              ),
+          section(
+            'Media',
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final k in mediaKinds)
+                  KindChip(
+                    kind: k,
+                    available: d.kinds.contains(k),
+                    selected: c.kinds.contains(k),
+                    onSelected: (v) =>
+                        upd(() => v ? c.kinds.add(k) : c.kinds.remove(k)),
+                  ),
+              ],
             ),
-          if (d.kinds.length > 1)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(
-                scope == 'all'
-                    ? 'Pick a single media type to see its own filters. Each type remembers its choices.'
-                    : 'Showing ${_kindNames[scope]} filters. Other types keep their own settings.',
-                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
-              ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              d.kinds.length < 3
+                  ? 'Greyed-out types are not in your catalog yet. Update the catalog (Settings → Catalog) to get them.'
+                  : scope == 'all'
+                  ? 'Pick a single media type to see its own filters. Each type remembers its choices.'
+                  : 'Showing ${_kindNames[scope]} filters. Other types keep their own settings.',
+              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
             ),
+          ),
 
           // ---------- common ----------
           if (cats.isNotEmpty)

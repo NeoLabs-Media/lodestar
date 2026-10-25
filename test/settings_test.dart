@@ -11,9 +11,15 @@ void main() {
   filterPersistenceTest();
 
   Future<AppState> fresh(Directory d) async {
-    final a = AppState();
-    await a.init(supportDirOverride: d.path);
-    return a;
+    // opening the bundled catalog can fail transiently when many test files run at once: retry before failing
+    AppState? a;
+    for (var i = 0; i < 3; i++) {
+      a = AppState();
+      await a.init(supportDirOverride: d.path);
+      if (a.error == null) return a;
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+    }
+    fail('could not open the catalog: ${a!.error}');
   }
 
   test('backup round-trips and merge/replace work', () async {
@@ -101,7 +107,11 @@ void main() {
       expect(b.catalogStatus, contains('Could not update'));
       expect(b.data.n, greaterThan(1000));
 
-      // choose-a-file path
+      // choose-a-file path (make sure no background check is still running that could switch the source back)
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      while (b.catalogBusy) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
       await b.useCatalogFile(bundled);
       expect(b.catalogSource, 'file');
       await b.resetCatalog();

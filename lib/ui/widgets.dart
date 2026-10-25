@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../engine/catalog_data.dart';
+import 'theme.dart';
 
 class Cover extends StatelessWidget {
   /// Tests set this to render placeholders instead of loading network images.
@@ -190,5 +191,67 @@ class KindBadge extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+const mediaKinds = ['anime', 'movie', 'tv'];
+const _kindPlural = {'anime': 'Anime', 'movie': 'Movies', 'tv': 'TV'};
+
+/// Explains (instead of silently doing nothing) why a media type cannot be picked.
+void explainMissingKind(BuildContext context, String kind) {
+  ScaffoldMessenger.maybeOf(context)
+    ?..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        content: Text(
+          '${_kindPlural[kind]} are not in your catalog yet. Open Settings → Catalog and check for an update to get them.',
+        ),
+      ),
+    );
+}
+
+/// A media-type chip that is always there: greyed out (with a tooltip) when the loaded catalog has no titles
+/// of that type, and tapping it says how to get them.
+class KindChip extends StatelessWidget {
+  final String kind;
+  final bool available;
+  final bool selected;
+  final void Function(bool) onSelected;
+  final bool choice; // ChoiceChip (feed strip) or FilterChip (filter sheet)
+  const KindChip({
+    super.key,
+    required this.kind,
+    required this.available,
+    required this.selected,
+    required this.onSelected,
+    this.choice = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final label = Text(
+      _kindPlural[kind]!,
+      style: available ? null : const TextStyle(color: Atlas.faint),
+    );
+    void tap(bool v) =>
+        available ? onSelected(v) : explainMissingKind(context, kind);
+    final chip = choice
+        ? ChoiceChip(
+            showCheckmark: false,
+            label: label,
+            selected: available && selected,
+            onSelected: tap,
+          )
+        : FilterChip(
+            label: label,
+            selected: available && selected,
+            onSelected: tap,
+          );
+    return available
+        ? chip
+        : Tooltip(
+            message: 'Not in your catalog yet — update the catalog',
+            child: Opacity(opacity: .6, child: chip),
+          );
   }
 }

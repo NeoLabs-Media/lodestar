@@ -755,7 +755,11 @@ class Recommender {
     if (_rules.isNotEmpty && _layerExcludes(i)) return false;
     if (ctl.also != null && !_passes(i, ctl.also!)) return false;
     final t = c.titles[i];
-    if (ctl.kinds.isNotEmpty && !ctl.kinds.contains(t.kind)) return false;
+    // a saved selection of types this catalog does not have must not empty the feed
+    if (ctl.kinds.isNotEmpty &&
+        ctl.kinds.any(c.kinds.contains) &&
+        !ctl.kinds.contains(t.kind))
+      return false;
     final f = ctl.perKind ? ctl.scopeFilters(t.kind) : ctl.active;
     if (f.categories.isNotEmpty && !f.categories.any((k) => inCategory(i, k)))
       return false;
