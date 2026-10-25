@@ -130,7 +130,8 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 300));
       });
       await t.pump(const Duration(milliseconds: 400));
-      expect(find.textContaining('Try Fixture Movie 2.'), findsOneWidget);
+      expect(find.textContaining('Try', findRichText: true), findsWidgets);
+      expect(find.byKey(const ValueKey('cite-102')), findsOneWidget);
       expect(find.textContaining('used tools: search_catalog'), findsOneWidget);
       expect(
         find.text('Fixture Movie 2'),

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../app_state.dart';
 import '../assistant/session.dart';
 import '../assistant/tools.dart';
+import 'chat_markdown.dart';
 import 'detail_page.dart';
 import 'filter_panel.dart';
 import 'improve_flow.dart';
@@ -413,16 +414,34 @@ class _Bubble extends StatelessWidget {
                     borderRadius: BorderRadius.circular(14),
                   )
                 : null,
-            child: SelectableText(
-              m.text,
-              style: TextStyle(
-                color: color,
-                height: 1.5,
-                fontSize: 14.5,
-                fontStyle: m.role == 'info' ? FontStyle.italic : null,
+            child: m.role == 'assistant'
+                ? ChatMarkdown(m.text)
+                : SelectableText(
+                    m.text,
+                    style: TextStyle(
+                      color: color,
+                      height: 1.5,
+                      fontSize: 14.5,
+                      fontStyle: m.role == 'info' ? FontStyle.italic : null,
+                    ),
+                  ),
+          ),
+          if (m.role == 'assistant')
+            Padding(
+              padding: const EdgeInsets.only(left: 6),
+              child: TextButton.icon(
+                key: const ValueKey('copy-message'),
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  foregroundColor: Atlas.muted,
+                  textStyle: const TextStyle(fontSize: 12),
+                ),
+                onPressed: () =>
+                    copyText(context, m.plain ?? m.text, what: 'message'),
+                icon: const Icon(Icons.copy_rounded, size: 14),
+                label: const Text('Copy'),
               ),
             ),
-          ),
           for (final id in m.cited)
             if (app.data.idToIdx[id] != null)
               Padding(

@@ -6,6 +6,7 @@ import '../assistant/llm.dart';
 import '../assistant/taste_ai.dart';
 import '../engine/recommender.dart';
 import '../engine/taste_layer.dart';
+import 'chat_markdown.dart';
 import 'theme.dart';
 
 /// "Improve my taste profile" / the cold-start interview. Steps: show exactly what will be sent -> Send ->
@@ -267,7 +268,7 @@ class _ReviewPageState extends State<ReviewPage> {
           if (p.summary.isNotEmpty) ...[
             const Text('SUMMARY', style: Atlas.kicker),
             const SizedBox(height: 6),
-            Text(p.summary, style: const TextStyle(height: 1.45)),
+            ChatMarkdown(p.summary),
             const SizedBox(height: 16),
           ],
           if (!p.interview && p.rules.isNotEmpty)
@@ -364,7 +365,7 @@ class _ReviewPageState extends State<ReviewPage> {
             ],
           ),
           if (r.why.isNotEmpty)
-            Text(r.why, style: const TextStyle(height: 1.4, color: Atlas.body)),
+            ChatMarkdown(r.why, color: Atlas.body, fontSize: 14),
           if (r.cites.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 4),
@@ -489,10 +490,7 @@ class TasteLayerCard extends StatelessWidget {
                       : 'Your accepted adjustments sit on top of the learned weights.',
                   style: const TextStyle(height: 1.45, color: Atlas.body),
                 )
-              : Text(
-                  l.summary,
-                  style: const TextStyle(height: 1.45, color: Atlas.body),
-                ),
+              : ChatMarkdown(l.summary, color: Atlas.body),
           const SizedBox(height: 12),
           Wrap(
             spacing: 10,
@@ -607,14 +605,7 @@ class TasteLayerCard extends StatelessWidget {
                       ],
                     ),
                     if (r.why.isNotEmpty)
-                      Text(
-                        r.why,
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          color: Atlas.muted,
-                          height: 1.35,
-                        ),
-                      ),
+                      ChatMarkdown(r.why, color: Atlas.muted, fontSize: 12.5),
                   ],
                 ),
               ),

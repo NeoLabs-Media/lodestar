@@ -468,8 +468,9 @@ void main() {
         expect(r.chats, 3);
         final ans = s.messages.last;
         expect(ans.role, 'assistant');
+        expect(ans.text, 'Try [#103] — a calm one. I also thought of .');
         expect(
-          ans.text,
+          ans.plain,
           'Try Fixture Movie 3 — a calm one. I also thought of .',
         );
         expect(

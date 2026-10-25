@@ -11,11 +11,13 @@ class UiMessage {
   final List<String> trace; // "used tools: …"
   final List<int>
   cited; // catalog ids the answer refers to (validated against tool results)
+  final String? plain; // text with citations spelled out, used for copying
   const UiMessage(
     this.role,
     this.text, {
     this.trace = const [],
     this.cited = const [],
+    this.plain,
   });
 }
 
@@ -220,18 +222,26 @@ class AssistantSession extends ChangeNotifier {
 
   void _finish(String raw, List<String> trace) {
     final cited = <int>[];
+    // Citations stay in the text as [#id] so the Markdown renderer can turn them into tappable chips anywhere
+    // (bold, lists, table cells); ids the tools never returned are removed.
     final text = raw
         .replaceAllMapped(_cite, (m) {
           final id = int.parse(m.group(1)!);
-          if (!_known.contains(id))
-            return ''; // never render ids the tools did not return
-          final idx = tools.ctx.data.idToIdx[id];
-          if (idx == null) return '';
+          if (!_known.contains(id)) return '';
+          if (tools.ctx.data.idToIdx[id] == null) return '';
           if (!cited.contains(id)) cited.add(id);
-          return tools.ctx.data.titles[idx].display;
+          return '[#$id]';
         })
         .replaceAll(RegExp(r'[ \t]{2,}'), ' ')
         .trim();
+    final plain = text.replaceAllMapped(
+      _cite,
+      (m) => tools
+          .ctx
+          .data
+          .titles[tools.ctx.data.idToIdx[int.parse(m.group(1)!)]!]
+          .display,
+    );
     messages.add(
       UiMessage(
         'assistant',
@@ -240,6 +250,7 @@ class AssistantSession extends ChangeNotifier {
             : text,
         trace: trace,
         cited: cited,
+        plain: plain,
       ),
     );
     busy = false;
@@ -272,6 +283,7 @@ Rules:
 - Recommend ONLY titles that exist in the catalog and that your tools returned. Never invent or guess titles. If nothing fits, say so plainly.
 - Cite every title you mention as [#id] using the catalog id from the tool results (e.g. "[#123]"). The app turns these into tappable cards.
 - Use the tools to look things up instead of answering from memory. Prefer get_recommendations for taste-based asks, search_catalog for specific titles or filters, find_similar for "like X", get_title for details.
+- Light Markdown is rendered and preferred: **bold** for titles and key terms, short bullet lists, at most a small heading. No giant headings, and no tables unless you are comparing several titles. Never use HTML or images.
 - Keep answers short: a few sentences or a short list with one reason each. Respect any limits the user states in chat (runtime, year, type, content to avoid).
 - Filters: ${filters.isEmpty ? 'the user has no filters active.' : 'the user set these filters: $filters.'} They are hard constraints the app applies to every tool automatically; you cannot change or work around them. If a result comes back empty because of them, tell the user plainly and that they can change the filters with the filter button next to the message box. Never suggest titles that break them.
 - ${spoilers ? 'Spoilers are ON: you may discuss the full plot, the ending and character fates when asked, but still do not volunteer big twists unprompted.' : 'Spoilers are OFF: never reveal plot twists, deaths, endings or identities, and do not hint at them. The tools withhold that information anyway. If the user asks for an ending or any spoiler, say the spoiler switch is off and that they can turn it on in the chat header; do not answer from memory.'}
