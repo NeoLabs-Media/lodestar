@@ -6,6 +6,7 @@ import '../assistant/session.dart';
 import '../assistant/tools.dart';
 import 'detail_page.dart';
 import 'filter_panel.dart';
+import 'improve_flow.dart';
 import 'not_for_me.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -229,6 +230,14 @@ class _ChatState extends State<_Chat> {
                     style: const TextStyle(fontSize: 12, color: Atlas.muted),
                   ),
                 ),
+              IconButton(
+                key: const ValueKey('assistant-improve'),
+                tooltip: 'Improve my taste profile',
+                icon: const Icon(Icons.auto_awesome_outlined),
+                onPressed: app.canImproveProfile
+                    ? () => startImprove(context)
+                    : null,
+              ),
               IconButton(
                 tooltip: 'Clear conversation',
                 icon: const Icon(Icons.delete_sweep_outlined),

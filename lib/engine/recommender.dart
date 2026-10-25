@@ -5,6 +5,7 @@ import 'catalog_data.dart';
 import 'categories.dart';
 import 'filters.dart';
 import 'labels.dart';
+import 'taste_layer.dart';
 
 enum EntryStatus { watched, planned, notInterested, ignored }
 
@@ -649,11 +650,109 @@ class Recommender {
     return ci >= 0 && (_catMask[idx] & (1 << ci)) != 0;
   }
 
+  /// The accepted "AI taste layer": a separate, reversible adjustment on top of the learned weights.
+  TasteLayer? get layer => _layer;
+  set layer(TasteLayer? v) {
+    _layer = v;
+    _compiled = null;
+  }
+
+  TasteLayer? _layer;
+  List<_CRule>? _compiled;
+
+  List<_CRule> get _rules => _compiled ??= _compile(
+    _layer?.rules ?? const [],
+    _layer?.active == true ? _layer!.strength : 0,
+  );
+
+  List<_CRule> _compile(List<LayerRule> rules, double global) {
+    final out = <_CRule>[];
+    for (final r in rules) {
+      if (!r.enabled || global <= 0.02) continue;
+      final fid = r.kind.isEmpty
+          ? -1
+          : (c.facetIndex['${r.kind}|${r.value}'] ?? -2);
+      final ifFid = r.ifKind.isEmpty
+          ? -1
+          : (c.facetIndex['${r.ifKind}|${r.ifValue}'] ?? -2);
+      final di = r.dim.isEmpty ? -1 : c.dimIndex(r.dim);
+      final bad = switch (r.type) {
+        RuleType.facet || RuleType.exclude => fid < 0,
+        RuleType.dimension => di < 0,
+        RuleType.conditional => fid < 0 || ifFid < 0,
+      };
+      if (bad) continue; // vocabulary that is not in this catalog does nothing
+      out.add(
+        _CRule(r, fid, ifFid, di, r.dir * r.magnitude * r.strength * global),
+      );
+    }
+    return out;
+  }
+
+  double _facetW(int i, int fid) {
+    for (final (f, w) in c.facetsOf(i)) {
+      if (f == fid) return w.toDouble();
+    }
+    return 0;
+  }
+
+  double _ruleAdj(_CRule cr, int i) {
+    switch (cr.rule.type) {
+      case RuleType.facet:
+        final w = _facetW(i, cr.fid);
+        return w < 4 ? 0 : cr.k * 1.2 * (w / 10).clamp(0.4, 1.0);
+      case RuleType.dimension:
+        return cr.k *
+            0.6 *
+            c.dimZ[i * CatalogData.dimCount + cr.dim].clamp(-2.0, 2.0);
+      case RuleType.conditional:
+        if (_facetW(i, cr.ifFid) < 4) return 0;
+        final w = _facetW(i, cr.fid);
+        return w < 4 ? 0 : cr.k * 1.2 * (w / 10).clamp(0.4, 1.0);
+      case RuleType.exclude:
+        return 0; // a hard filter, see _passes
+    }
+  }
+
+  /// Total effect of the layer's rules on title [i], capped so it can steer but never overrule the model.
+  double layerAdjust(int i, [List<_CRule>? rules]) {
+    var a = 0.0;
+    for (final cr in rules ?? _rules) {
+      a += _ruleAdj(cr, i);
+    }
+    return a.clamp(-2.5, 2.5);
+  }
+
+  /// "AI taste layer: …" for the rule that moved title [i] the most (null when none mattered).
+  String? layerNote(int i) {
+    _CRule? best;
+    var bv = 0.0;
+    for (final cr in _rules) {
+      final v = _ruleAdj(cr, i).abs();
+      if (v > bv) {
+        bv = v;
+        best = cr;
+      }
+    }
+    if (best == null || bv < 0.12) return null;
+    final up = _ruleAdj(best, i) > 0;
+    return 'AI taste layer: ${best.rule.text.toLowerCase()} (${up ? 'ranked higher' : 'ranked lower'}).';
+  }
+
+  bool _layerExcludes(int i) {
+    for (final cr in _rules) {
+      if (cr.rule.type == RuleType.exclude && _facetW(i, cr.fid) >= 4)
+        return true;
+    }
+    return false;
+  }
+
   /// Content warnings the user chose to "always hide" (from Not-for-me reasons); set by the app.
   Set<String> alwaysHideWarnings = {};
 
   bool _passes(int i, Controls ctl) {
     if (alwaysHideWarnings.isNotEmpty && _hiddenByWarning(i)) return false;
+    if (_rules.isNotEmpty && _layerExcludes(i)) return false;
     if (ctl.also != null && !_passes(i, ctl.also!)) return false;
     final t = c.titles[i];
     if (ctl.kinds.isNotEmpty && !ctl.kinds.contains(t.kind)) return false;
@@ -823,7 +922,17 @@ class Recommender {
           qualTerm -
           pen * 1.4 +
           (m.hasSignal ? 0 : 0.8 * zq - 1.5 * obsC * (1 - g));
-      out.add(_Cand(i, fin, base, ze, zf, seqOf, preOf));
+      out.add(
+        _Cand(
+          i,
+          fin + (_rules.isEmpty ? 0 : layerAdjust(i)),
+          base,
+          ze,
+          zf,
+          seqOf,
+          preOf,
+        ),
+      );
     }
     out.sort((a, b) => b.score.compareTo(a.score));
     return out;
@@ -933,11 +1042,12 @@ class Recommender {
       preOf: cand.preOf,
       anchorUse: anchorUse,
     );
+    final note = _rules.isEmpty ? null : layerNote(cand.idx);
     return Rec(
       cand.idx,
       cand.score,
       m.hasSignal ? match.clamp(1, 99.0).toDouble() : 0.0,
-      why,
+      note == null ? why : '$why $note',
       anchor,
       gem && t.popularity >= 0,
       tags,
@@ -1233,4 +1343,166 @@ class _Cand {
     this.seqOf,
     this.preOf,
   );
+}
+
+class _CRule {
+  final LayerRule rule;
+  final int fid, ifFid, dim;
+  final double k; // dir * magnitude * rule strength * global strength
+  const _CRule(this.rule, this.fid, this.ifFid, this.dim, this.k);
+}
+
+enum LayerVerdict { helps, neutral, worse, unknown }
+
+/// Result of testing a layer on the user's own ratings (leave one out).
+class LayerEval {
+  final int tested, improved, worsened;
+  final double
+  meanDelta; // average gain in rank percentile (1.0 = from last to first)
+  final LayerVerdict verdict;
+  final Map<String, (LayerVerdict, double)> perRule;
+  const LayerEval(
+    this.tested,
+    this.improved,
+    this.worsened,
+    this.meanDelta,
+    this.verdict,
+    this.perRule,
+  );
+
+  static const none = LayerEval(0, 0, 0, 0, LayerVerdict.unknown, {});
+
+  /// Plain words, e.g. "Would have ranked your favourites higher in 71% of cases (12 of 17 tests)."
+  String get text {
+    if (tested == 0)
+      return 'Not enough rated titles to test this against your own ratings.';
+    final decided = improved + worsened;
+    if (verdict == LayerVerdict.neutral || decided == 0)
+      return 'No measurable change on $tested of your own ratings.';
+    final pct =
+        (100 * (verdict == LayerVerdict.helps ? improved : worsened) / decided)
+            .round();
+    return verdict == LayerVerdict.helps
+        ? 'Would have ranked your held-out ratings better in $pct% of cases ($improved of $decided that changed, $tested tested).'
+        : 'Would have ranked your held-out ratings worse in $pct% of cases ($worsened of $decided that changed, $tested tested).';
+  }
+}
+
+extension LayerValidation on Recommender {
+  /// Leave-one-out test: for held-out favourites (rated >= 8) and clear dislikes (<= 5 or skipped) the title is
+  /// removed from the library, the model refitted, and its rank percentile among all unseen titles compared
+  /// with and without [rules]. Favourites should move up, dislikes down.
+  Future<LayerEval> evaluateLayer(
+    List<UserEntry> entries,
+    List<LayerRule> rules, {
+    double global = 1,
+    int maxHeld = 24,
+  }) async {
+    bool liked(UserEntry e) =>
+        e.status == EntryStatus.watched && (e.rating ?? 0) >= 8;
+    bool disliked(UserEntry e) =>
+        (e.status == EntryStatus.watched &&
+            e.rating != null &&
+            e.rating! <= 5) ||
+        e.status == EntryStatus.notInterested;
+    final likes = entries.where(liked).toList(),
+        dislikes = entries.where(disliked).toList();
+    List<UserEntry> spread(List<UserEntry> l, int n) {
+      if (l.length <= n) return l;
+      return [for (var k = 0; k < n; k++) l[(k * l.length / n).floor()]];
+    }
+
+    final held = [
+      ...spread(likes, maxHeld * 2 ~/ 3),
+      ...spread(dislikes, maxHeld ~/ 3),
+    ];
+    if (held.length < 3 ||
+        entries.where((e) => e.status == EntryStatus.watched).length < 6)
+      return LayerEval.none;
+    final all = _compile(rules, global);
+    if (all.isEmpty) return LayerEval.none;
+    final ctl = Controls(obscurity: 0.33);
+    final saved = _layer, savedC = _compiled;
+    _layer = null;
+    _compiled = null;
+    var improved = 0, worsened = 0, total = 0.0, tested = 0;
+    final perSum = <String, double>{for (final cr in all) cr.rule.id: 0};
+    try {
+      for (final h in held) {
+        await Future<void>.delayed(Duration.zero); // keep the UI alive
+        final hi = c.idToIdx[h.id];
+        if (hi == null) continue;
+        final m = fit([
+          for (final e in entries)
+            if (e.id != h.id) e,
+        ]);
+        final cands = _rank(m, ctl);
+        final pos = cands.indexWhere((x) => x.idx == hi);
+        if (pos < 0) continue;
+        final sh = cands[pos].score;
+        final n = cands.length;
+        final sign = liked(h) ? 1.0 : -1.0;
+        // candidates are sorted by score, best first; only those near [sh] can change side
+        double pct(List<_CRule> rs) {
+          final ah = layerAdjust(hi, rs);
+          var below = 0;
+          for (final x in cands) {
+            if (x.score < sh - 6) {
+              below++;
+            } else if (x.score <= sh + 6) {
+              if (x.idx != hi && x.score + layerAdjust(x.idx, rs) < sh + ah)
+                below++;
+            }
+          }
+          return below / n;
+        }
+
+        final p0 = pct(const []);
+        final d = sign * (pct(all) - p0);
+        tested++;
+        total += d;
+        if (d > 0.01) improved++;
+        if (d < -0.01) worsened++;
+        for (final cr in all) {
+          if (cr.rule.type == RuleType.exclude) {
+            // a hard exclusion is judged by what it would have hidden
+            if (_facetW(hi, cr.fid) >= 4)
+              perSum[cr.rule.id] = perSum[cr.rule.id]! - sign * 0.1;
+            continue;
+          }
+          perSum[cr.rule.id] = perSum[cr.rule.id]! + sign * (pct([cr]) - p0);
+        }
+      }
+    } finally {
+      _layer = saved;
+      _compiled = savedC;
+    }
+    if (tested == 0) return LayerEval.none;
+    final mean = total / tested;
+    LayerVerdict verdictOf(double mean, int imp, int wor, int n) {
+      if (mean >= 0.01 && imp >= wor) return LayerVerdict.helps;
+      if (mean <= -0.01 && wor >= imp) return LayerVerdict.worse;
+      return LayerVerdict.neutral;
+    }
+
+    final per = {
+      for (final e in perSum.entries)
+        e.key: (
+          e.value / tested >= 0.004
+              ? LayerVerdict.helps
+              : (e.value / tested <= -0.004
+                    ? LayerVerdict.worse
+                    : LayerVerdict.neutral),
+          e.value / tested,
+        ),
+    };
+    return LayerEval(
+      tested,
+      improved,
+      worsened,
+      mean,
+      verdictOf(mean, improved, worsened, tested),
+      per,
+    );
+  }
 }

@@ -12,6 +12,7 @@ import 'package:http/http.dart' as http;
 import 'assistant/llm.dart';
 import 'assistant/openrouter.dart';
 import 'assistant/session.dart';
+import 'assistant/taste_ai.dart';
 import 'assistant/settings.dart';
 import 'assistant/tools.dart';
 import 'data/backup.dart';
@@ -23,6 +24,7 @@ import 'engine/catalog_loader.dart';
 import 'engine/catalog_update.dart';
 import 'platform/sql.dart' as sql;
 import 'engine/recommender.dart';
+import 'engine/taste_layer.dart';
 import 'engine/search.dart';
 
 class AppState extends ChangeNotifier {
@@ -232,7 +234,77 @@ class AppState extends ChangeNotifier {
     _reloadEntries();
   }
 
+  // ---- AI taste layer (separate from the learned weights; see engine/taste_layer.dart) ----
+  TasteLayer layer = const TasteLayer();
+  TasteLayer? layerPrev; // one undo step
+
+  void _loadLayer() {
+    layer =
+        TasteLayer.decode(users.setting('taste_layer')) ?? const TasteLayer();
+    layerPrev = TasteLayer.decode(users.setting('taste_layer_prev'));
+    recommender.layer = layer;
+  }
+
+  void _saveLayer() {
+    users.setSetting('taste_layer', layer.isEmpty ? '' : layer.encode());
+    users.setSetting(
+      'taste_layer_prev',
+      layerPrev == null || layerPrev!.isEmpty ? '' : layerPrev!.encode(),
+    );
+    recommender.layer = layer;
+    _changed();
+  }
+
+  /// "Improve my taste profile" needs the assistant switched on, a key and the library-access consent.
+  bool get canImproveProfile => ai.ready && ai.libraryAllowed;
+
+  TasteRequest tasteRequest() =>
+      buildTasteRequest(data, entries.values.toList(), summary(), layer);
+
+  /// Only ever called after the user saw [tasteRequest]'s preview and tapped Send.
+  Future<TasteProposal> sendTasteRequest(TasteRequest req) async {
+    if (!canImproveProfile)
+      throw const TasteAiException(
+        'Switch on the assistant and allow it to read your library first (Settings → AI assistant).',
+      );
+    return requestProposal(providerFor(), ai.model, req, data);
+  }
+
+  Future<LayerEval> evaluateRules(List<LayerRule> rules) =>
+      recommender.evaluateLayer(entries.values.toList(), rules);
+
+  /// Replaces the layer with [next]; the old one stays as the undo step and the differences are recorded.
+  void applyLayer(TasteLayer next) {
+    final stamped = next.copyWith(
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+      changes: next.diffFrom(layer),
+    );
+    if (!layer.isEmpty) layerPrev = layer;
+    layer = stamped;
+    _saveLayer();
+  }
+
+  void undoLayer() {
+    final prev = layerPrev;
+    if (prev == null) return;
+    layerPrev = layer.isEmpty ? null : layer; // undo of the undo
+    layer = prev;
+    _saveLayer();
+  }
+
+  void resetLayer() {
+    if (!layer.isEmpty) layerPrev = layer;
+    layer = const TasteLayer();
+    _saveLayer();
+  }
+
+  void updateLayer(TasteLayer next) {
+    layer = next;
+    _saveLayer();
+  }
+
   void _reloadEntries() {
+    _loadLayer();
     entries.clear();
     final backfill = <UserEntry>[];
     for (var e in users.all()) {
@@ -491,7 +563,12 @@ class AppState extends ChangeNotifier {
   String exportBackup() => buildBackup(
     users.all(),
     data,
-    settings: {'obscurity': controls.obscurity.toStringAsFixed(3)},
+    settings: {
+      'obscurity': controls.obscurity.toStringAsFixed(3),
+      if (!layer.isEmpty) 'taste_layer': layer.encode(),
+      if (layerPrev != null && !layerPrev!.isEmpty)
+        'taste_layer_prev': layerPrev!.encode(),
+    },
   );
 
   /// Restores a backup file's content. [replace] wipes the current library first.
@@ -503,6 +580,14 @@ class AppState extends ChangeNotifier {
     if (ob != null) {
       controls.obscurity = ob;
       users.setSetting('obscurity', ob.toStringAsFixed(3));
+    }
+    if (replace) {
+      users.setSetting('taste_layer', '');
+      users.setSetting('taste_layer_prev', '');
+    }
+    for (final k in const ['taste_layer', 'taste_layer_prev']) {
+      final v = res.settings[k];
+      if (v != null && TasteLayer.decode(v) != null) users.setSetting(k, v);
     }
     _reloadEntries();
     _changed();

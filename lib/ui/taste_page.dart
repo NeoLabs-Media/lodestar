@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../app_state.dart';
 import '../engine/labels.dart';
 import '../engine/recommender.dart';
+import 'improve_flow.dart';
 
 class TastePage extends StatelessWidget {
   const TastePage({super.key});
@@ -28,12 +29,17 @@ class TastePage extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
                 child: s.rated == 0
-                    ? Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Text(
-                          'Rate a few titles and this page will explain, in plain words, what you reward and what you avoid.',
-                          style: TextStyle(color: cs.onSurfaceVariant),
-                        ),
+                    ? Column(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(32),
+                            child: Text(
+                              'Rate a few titles and this page will explain, in plain words, what you reward and what you avoid.',
+                              style: TextStyle(color: cs.onSurfaceVariant),
+                            ),
+                          ),
+                          const TasteLayerCard(),
+                        ],
                       )
                     : Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -136,6 +142,7 @@ class TastePage extends StatelessWidget {
                               ],
                             ),
                           ],
+                          const TasteLayerCard(),
                           const SizedBox(height: 24),
                           Text(
                             'Model: ${app.model!.nSignals} signals → ${app.model!.nSignals < 8
