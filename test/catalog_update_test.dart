@@ -58,6 +58,52 @@ void main() {
     );
 
     test(
+      'a schema-2 catalog migrates to 3: filter columns appear empty, nothing else changes',
+      () {
+        final f = copyTo(tmp, 'legacy_v2', 'cat.db');
+        final before = CatalogStore.open(f.path).data;
+        expect(before.countWith('runtime', {}), 0);
+        final db = sql.openFile(f.path);
+        expect(schemaOf(db), 2);
+        expect(migrateCatalog(db), isTrue);
+        expect(schemaOf(db), 3);
+        expect(migrateCatalog(db), isFalse);
+        final cols = {
+          for (final r in db.select('PRAGMA table_info(title)'))
+            r['name'] as String,
+        };
+        expect(
+          cols,
+          containsAll([
+            'runtime',
+            'countries',
+            'languages',
+            'certification',
+            'seasons',
+            'directors',
+            'studios',
+            'creators',
+            'source',
+            'votes',
+          ]),
+        );
+        db.dispose();
+        final after = CatalogStore.open(f.path).data;
+        expect(after.n, before.n);
+        expect(
+          [for (final t in after.titles) t.key],
+          [for (final t in before.titles) t.key],
+        );
+        expect(
+          after.countWith('runtime', {}),
+          0,
+          reason: 'unknown stays unknown',
+        );
+        expect(after.dimsRaw, before.dimsRaw);
+      },
+    );
+
+    test(
       'migrateCatalog upgrades the file in place, idempotently, and loads identically',
       () {
         final f = copyTo(tmp, 'legacy_v1', 'cat.db');
@@ -65,7 +111,7 @@ void main() {
         final db = sql.openFile(f.path);
         expect(schemaOf(db), 1);
         expect(migrateCatalog(db), isTrue);
-        expect(schemaOf(db), 2);
+        expect(schemaOf(db), 3);
         final once = dump(db);
         expect(migrateCatalog(db), isFalse);
         expect(dump(db), once);
@@ -91,7 +137,7 @@ void main() {
 
   group('delta merge', () {
     test('adds, updates and removes titles; remaps facet ids; keeps links', () {
-      final f = copyTo(tmp, 'mixed_v2', 'cat.db');
+      final f = copyTo(tmp, 'mixed', 'cat.db');
       final target = sql.openFile(f.path);
       final delta = sql.openFile(fx('delta_ok'), readOnly: true);
       expect(isDeltaDb(delta), isTrue);
@@ -156,7 +202,7 @@ void main() {
     });
 
     test('is idempotent: applying the same delta again changes nothing', () {
-      final f = copyTo(tmp, 'mixed_v2', 'cat.db');
+      final f = copyTo(tmp, 'mixed', 'cat.db');
       final target = sql.openFile(f.path);
       final delta = sql.openFile(fx('delta_ok'), readOnly: true);
       expect(mergeDelta(target, delta).applied, isTrue);
@@ -172,7 +218,7 @@ void main() {
     test(
       'rejects a delta that skips ahead; ignores a stale one; leaves the file untouched',
       () {
-        final f = copyTo(tmp, 'mixed_v2', 'cat.db');
+        final f = copyTo(tmp, 'mixed', 'cat.db');
         final target = sql.openFile(f.path);
         final before = dump(target);
         for (final (name, applied, needle) in [
@@ -203,6 +249,55 @@ void main() {
       expect(c.idToIdx.containsKey(109), isTrue);
       expect(c.titles[c.idToIdx[1]!].key, 'anilist:1001');
     });
+
+    test(
+      'new filter columns arrive with a delta, whichever catalog layout is installed',
+      () {
+        for (final base in ['legacy_v1', 'legacy_v2', 'mixed']) {
+          final d = Directory.systemTemp.createTempSync('lodestar_upd2');
+          addTearDown(() => d.deleteSync(recursive: true));
+          final f = copyTo(d, base, 'cat.db');
+          final target = sql.openFile(f.path);
+          final delta = sql.openFile(fx('delta_ok'), readOnly: true);
+          final res = mergeDelta(target, delta);
+          expect(schemaOf(target), 3, reason: base);
+          target.dispose();
+          delta.dispose();
+          expect(res.applied, isTrue, reason: '$base: ${res.message}');
+          final c = CatalogStore.open(f.path).data;
+          final movie = c.titles[c.idToIdx[109]!];
+          expect([movie.runtime, movie.certification], [193, 'PG']);
+          expect(movie.countries, ['US']);
+          expect(movie.directors, ['Director B']);
+          final tv = c.titles[c.idToIdx[207]!];
+          expect(
+            [tv.seasons, tv.statusGroup, tv.creators.length],
+            [7, 'ongoing', 2],
+          );
+        }
+      },
+    );
+
+    test(
+      'a delta in the older schema-2 layout still merges (its titles just lack filter data)',
+      () {
+        final f = copyTo(tmp, 'mixed', 'cat.db');
+        final target = sql.openFile(f.path);
+        final delta = sql.openFile(fx('delta_v2'), readOnly: true);
+        final res = mergeDelta(target, delta);
+        target.dispose();
+        delta.dispose();
+        expect(res.applied, isTrue, reason: res.message);
+        final c = CatalogStore.open(f.path).data;
+        expect(c.idToIdx.containsKey(109), isTrue);
+        expect(c.titles[c.idToIdx[109]!].runtime, isNull);
+        expect(
+          c.titles[c.idToIdx[101]!].runtime,
+          97,
+          reason: 'untouched titles keep their data',
+        );
+      },
+    );
 
     test(
       'Python export + delta merge in Dart equals a full rebuild (cross-check)',
@@ -256,7 +351,7 @@ void main() {
 
   group('user data and the app', () {
     Future<AppState> appWith(Directory dir, List<UserEntry> entries) async {
-      copyTo(dir, 'mixed_v2', 'catalog_custom.db');
+      copyTo(dir, 'mixed', 'catalog_custom.db');
       final u = UserStore.open('${dir.path}/user.db');
       u.setSetting('catalog_source', 'file');
       u.putAll(entries);

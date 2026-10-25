@@ -21,7 +21,7 @@ class DeltaResult {
   });
 }
 
-const supportedSchema = 2;
+const supportedSchema = 3;
 const _deltaFormat = 1;
 
 bool _hasTable(CommonDatabase db, String name) => db.select(
@@ -40,50 +40,67 @@ bool isDeltaDb(CommonDatabase db) => _hasTable(db, 'delta_meta');
 int schemaOf(CommonDatabase db) =>
     int.tryParse(_meta(db, 'meta')['schema'] ?? '') ?? 0;
 
-/// Upgrades a schema-1 catalog (anime only, rel/rec keyed by AniList id) to schema 2 in place.
-/// Idempotent; returns true when something was changed.
+/// Columns added after schema 1: name -> type. (v2: key..updated_at, v3: the filter columns.)
+const _addedColumns = {
+  'key': 'TEXT',
+  'kind': "TEXT DEFAULT 'anime'",
+  'tmdb': 'INT',
+  'imdb': 'TEXT',
+  'release_date': 'TEXT',
+  'cover': 'TEXT',
+  'updated_at': 'REAL',
+  'runtime': 'INT',
+  'countries': 'TEXT',
+  'languages': 'TEXT',
+  'certification': 'TEXT',
+  'seasons': 'INT',
+  'directors': 'TEXT',
+  'studios': 'TEXT',
+  'creators': 'TEXT',
+  'source': 'TEXT',
+  'votes': 'INT',
+};
+
+/// Upgrades an older catalog (schema 1 or 2) to the current schema in place. Idempotent; returns true
+/// when something was changed. Columns the old catalog never had stay NULL (= unknown) until a newer
+/// catalog or delta fills them.
 bool migrateCatalog(CommonDatabase db) {
-  if (schemaOf(db) >= supportedSchema) return false;
+  final from = schemaOf(db);
+  if (from >= supportedSchema) return false;
   db.execute('BEGIN');
   try {
     final have = {
       for (final r in db.select('PRAGMA table_info(title)'))
         r['name'] as String,
     };
-    const adds = {
-      'key': 'TEXT',
-      'kind': "TEXT DEFAULT 'anime'",
-      'tmdb': 'INT',
-      'imdb': 'TEXT',
-      'release_date': 'TEXT',
-      'cover': 'TEXT',
-      'updated_at': 'REAL',
-    };
-    adds.forEach((c, t) {
+    _addedColumns.forEach((c, t) {
       if (!have.contains(c)) db.execute('ALTER TABLE title ADD COLUMN $c $t');
     });
-    db.execute("UPDATE title SET kind='anime' WHERE kind IS NULL");
-    db.execute(
-      "UPDATE title SET key = CASE WHEN anilist IS NOT NULL THEN 'anilist:'||anilist "
-      "WHEN mal IS NOT NULL THEN 'mal:'||mal ELSE 'id:'||id END WHERE key IS NULL",
-    );
-    db.execute(
-      'UPDATE title SET cover = COALESCE(pic, thumb) WHERE cover IS NULL',
-    );
-    for (final t in const ['rel', 'rec']) {
-      final cols = {
-        for (final r in db.select('PRAGMA table_info($t)')) r['name'] as String,
-      };
-      if (cols.contains('other_key')) continue;
-      final extra = t == 'rel' ? 'type TEXT' : 'rating INT';
-      final extraCol = t == 'rel' ? 'type' : 'rating';
-      db.execute('CREATE TABLE ${t}_v2(id INT, other_key TEXT, $extra)');
+    if (from < 2) {
+      db.execute("UPDATE title SET kind='anime' WHERE kind IS NULL");
       db.execute(
-        "INSERT INTO ${t}_v2 SELECT id, 'anilist:'||other_anilist, $extraCol FROM $t",
+        "UPDATE title SET key = CASE WHEN anilist IS NOT NULL THEN 'anilist:'||anilist "
+        "WHEN mal IS NOT NULL THEN 'mal:'||mal ELSE 'id:'||id END WHERE key IS NULL",
       );
-      db.execute('DROP TABLE $t');
-      db.execute('ALTER TABLE ${t}_v2 RENAME TO $t');
-      db.execute('CREATE INDEX IF NOT EXISTS ${t}_id ON $t(id)');
+      db.execute(
+        'UPDATE title SET cover = COALESCE(pic, thumb) WHERE cover IS NULL',
+      );
+      for (final t in const ['rel', 'rec']) {
+        final cols = {
+          for (final r in db.select('PRAGMA table_info($t)'))
+            r['name'] as String,
+        };
+        if (cols.contains('other_key')) continue;
+        final extra = t == 'rel' ? 'type TEXT' : 'rating INT';
+        final extraCol = t == 'rel' ? 'type' : 'rating';
+        db.execute('CREATE TABLE ${t}_v2(id INT, other_key TEXT, $extra)');
+        db.execute(
+          "INSERT INTO ${t}_v2 SELECT id, 'anilist:'||other_anilist, $extraCol FROM $t",
+        );
+        db.execute('DROP TABLE $t');
+        db.execute('ALTER TABLE ${t}_v2 RENAME TO $t');
+        db.execute('CREATE INDEX IF NOT EXISTS ${t}_id ON $t(id)');
+      }
     }
     db.execute(
       "INSERT OR REPLACE INTO meta(key,value) VALUES('schema','$supportedSchema')",

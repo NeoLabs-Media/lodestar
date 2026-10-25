@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Builds the synthetic catalogs used by the Dart tests (pure stdlib, deterministic).
 
-  test/fixtures/mixed_v2.db      schema 2: 10 anime + 8 movies + 6 TV, titles without anilist ids
+  test/fixtures/mixed.db         schema 3: 10 anime + 8 movies + 6 TV, titles without anilist ids, filter columns
+  test/fixtures/legacy_v2.db     the same catalog in the schema-2 layout (no filter columns)
   test/fixtures/legacy_v1.db     schema 1 layout (anime only) to exercise the migration
   test/fixtures/delta_ok.db      from 100 -> 200: 3 new titles, 1 changed, 1 removed (own facet ids)
   test/fixtures/delta_gap.db     from 150 -> 250 (installed catalog is at 100: must be rejected)
@@ -16,8 +17,8 @@ import sqlite3
 import zlib
 from pathlib import Path
 
-from catalog_schema import (DELTA_FORMAT, DIM_ORDER, SCHEMA_VERSION, TITLE_NAMES, create_schema, pack_facets,
-                            quantize, title_key)
+from catalog_schema import (COLUMN_SINCE, DELTA_FORMAT, DIM_ORDER, SCHEMA_VERSION, TITLE_NAMES, columns_for, create_schema,
+                            pack_facets, quantize, title_key)
 
 OUT = Path(__file__).resolve().parent.parent / "test" / "fixtures"
 EMB_DIM = 16
@@ -48,6 +49,23 @@ rnd = random.Random(7)
 CENTERS = {c: unit([rnd.gauss(0, 1) for _ in range(EMB_DIM)]) for c in CLUSTERS}
 
 
+def filter_cols(tid, kind, popularity):
+    """deterministic values for the schema-3 filter columns"""
+    if kind == "anime":
+        return {"runtime": 24, "countries": "JP", "languages": "ja", "certification": None, "seasons": None,
+                "directors": None, "studios": "Studio A" if tid % 2 else "Studio B", "creators": None,
+                "source": "MANGA" if tid % 3 else "ORIGINAL", "votes": None}
+    if kind == "movie":
+        j = tid - 100
+        return {"runtime": 85 + j * 12, "countries": "US" if j % 2 else "FR", "languages": "en" if j % 2 else "fr",
+                "certification": ["PG", "PG-13", "R"][j % 3], "seasons": None, "directors": f"Director {'AB'[j % 2]}",
+                "studios": None, "creators": None, "source": None, "votes": 1000 * j}
+    k = tid - 200
+    return {"runtime": 45, "countries": "US" if k % 2 else "GB", "languages": "en", "certification": ["TV-14", "TV-MA"][k % 2],
+            "seasons": k, "directors": None, "studios": None, "creators": f"Creator {k % 3}\nNetwork {'XY'[k % 2]}",
+            "source": None, "votes": 500 * k}
+
+
 def make_title(tid, kind, cluster, name, *, anilist=None, mal=None, tmdb=None, imdb=None, extra_facets=(),
                recs=(), rels=(), year=2015, popularity=1000, updated=50.0, fmt=None, pitch=None, episodes=None):
     r = random.Random(tid * 131)
@@ -63,14 +81,19 @@ def make_title(tid, kind, cluster, name, *, anilist=None, mal=None, tmdb=None, i
         "id": tid, "key": key, "kind": kind, "anilist": anilist, "mal": mal, "tmdb": tmdb, "imdb": imdb,
         "title": name, "title_en": None, "syn": f"{name} alt\nalt {name}", "year": year, "season": None,
         "format": fmt or ("TV" if kind in ("anime", "tv") else "MOVIE"), "episodes": episodes or (12 if kind != "movie" else 1),
-        "status": "FINISHED", "release_date": f"{year}-06-01", "popularity": popularity, "mean_score": 70 + (tid % 20),
+        "status": "RELEASING" if (kind == "tv" and tid % 2) else "FINISHED", "release_date": f"{year}-06-01", "popularity": popularity, "mean_score": 70 + (tid % 20),
         "tier": "compact", "quality": 7.0, "thumb": None if kind != "anime" else f"https://img.example/{tid}t.jpg",
         "pic": None if kind != "anime" else f"https://img.example/{tid}.jpg",
         "cover": f"https://img.example/{tid}.jpg", "pitch": pitch or f"A {cluster} story called {name}.",
         "oneliner": f"{name}: one line.", "ending": "bittersweet" if tid % 3 == 0 else "happy",
         "genres": GENRE[cluster], "adult": 0, "emb": emb, "dims": bytes(dims), "facet_pairs": facets,
-        "detail": {"sf": f"Spoiler-free text for {name}.", "full": "Full text.", "chars": [], "rels": [], "sim": [],
-                   "cw": [], "moods": [], "themes": [], "dur": 24}, "updated_at": updated,
+        "detail": {"sf": f"Spoiler-free text for {name}.", "full": f"SECRET-FULL-PLOT of {name}: the hero dies.",
+                   "end": "tragic", "endd": "SECRET-ENDING-DESCRIPTION",
+                   "chars": [{"n": "Ann", "a": ["mentor"], "m": "SECRET-MINDSET", "arc": "SECRET-FATE-ARC"}],
+                   "rels": [{"a": "Ann", "b": "Bo", "t": ["allies"], "e": "SECRET-RELATION-TURN", "rom": False}],
+                   "sim": [{"t": "Other Show", "w": "SECRET-TWIST-WHY"}],
+                   "cw": ["gore", "death of a major character"], "moods": [], "themes": [], "dur": 24}, "updated_at": updated,
+        **filter_cols(tid, kind, popularity),
         "recs": list(recs), "rels": list(rels),
     }
 
@@ -118,7 +141,7 @@ def write_catalog(path, titles, vocab, *, snapshot, schema=SCHEMA_VERSION, delta
     if schema == 1:
         create_v1(db)
     else:
-        create_schema(db, delta=delta is not None)
+        create_schema(db, delta=delta is not None, schema=schema)
     for k, (kind, val) in enumerate(vocab):
         db.execute("INSERT INTO facet_vocab VALUES(?,?,?,?)", (k, kind, val, 5))
     for t in titles:
@@ -136,11 +159,9 @@ def write_catalog(path, titles, vocab, *, snapshot, schema=SCHEMA_VERSION, delta
                 if other.startswith("anilist:"):
                     db.execute("INSERT INTO rec VALUES(?,?,?)", (t["id"], int(other.split(":")[1]), rating))
         else:
-            vals = [t["id"], t["key"], t["kind"], t["anilist"], t["mal"], t["tmdb"], t["imdb"], t["title"], t["title_en"],
-                    t["syn"], t["year"], t["season"], t["format"], t["episodes"], t["status"], t["release_date"],
-                    t["popularity"], t["mean_score"], t["tier"], t["quality"], t["thumb"], t["pic"], t["cover"], t["pitch"],
-                    t["oneliner"], t["ending"], t["genres"], 0, quantize(t["emb"], scale), t["dims"], blob, det, t["updated_at"]]
-            db.execute(f"INSERT INTO title({','.join(TITLE_NAMES)}) VALUES({','.join('?' * len(TITLE_NAMES))})", vals)
+            row = dict(t, adult=0, emb=quantize(t["emb"], scale), facets=blob, detail=det)
+            cols = [n for n, _ in columns_for(schema)]
+            db.execute(f"INSERT INTO title({','.join(cols)}) VALUES({','.join('?' * len(cols))})", [row[c] for c in cols])
             for other, typ in t["rels"]:
                 db.execute("INSERT INTO rel VALUES(?,?,?)", (t["id"], other, typ))
             for other, rating in t["recs"]:
@@ -175,7 +196,8 @@ def create_v1(db):
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     base = base_titles()
-    write_catalog(OUT / "mixed_v2.db", base, VOCAB, snapshot=100.0)
+    write_catalog(OUT / "mixed.db", base, VOCAB, snapshot=100.0)
+    write_catalog(OUT / "legacy_v2.db", base, VOCAB, snapshot=100.0, schema=2)
     write_catalog(OUT / "legacy_v1.db", [t for t in base if t["kind"] == "anime"], VOCAB, snapshot=100.0, schema=1)
 
     # delta: own (shuffled + extended) facet numbering, different embedding scale
@@ -191,6 +213,8 @@ def main():
     changed["emb"] = [x * 0.9 for x in changed["emb"]]  # slightly different vector; scale differs too
     write_catalog(OUT / "delta_ok.db", [new_anime, new_movie, new_tv, changed], dvocab, snapshot=200.0,
                   delta={"from": 100.0, "to": 200.0, "built_at": "2026-02-01 00:00"}, removed=[5])
+    write_catalog(OUT / "delta_v2.db", [new_movie, new_tv], dvocab, snapshot=200.0, schema=2,
+                  delta={"from": 100.0, "to": 200.0, "built_at": "2026-02-01 00:00"})
     write_catalog(OUT / "delta_gap.db", [make_title(12, "tv", "comedy", "Fixture Series 12", tmdb=7012, updated=240.0)],
                   VOCAB, snapshot=250.0, delta={"from": 150.0, "to": 250.0, "built_at": "x"})
     write_catalog(OUT / "delta_stale.db", [make_title(13, "movie", "drama", "Fixture Movie 13", tmdb=5013, updated=80.0)],

@@ -6,6 +6,9 @@ Schema history
   2  multi-media. title gains key, kind ('anime'|'movie'|'tv'), tmdb, imdb, release_date, cover,
      updated_at; rel/rec reference other titles by *key* (other_key); meta carries `snapshot`
      (the profile.updated_at watermark the catalog contains).
+  3  queryable filter columns: runtime (minutes), countries, languages, certification (content
+     rating), seasons, directors, studios, creators (created_by + networks), source (source
+     material), votes. List columns are newline-separated. NULL = unknown.
 
 Title keys are stable external identities (the internal `id` is only stable while the source DB
 lives):  anime -> 'anilist:N' | 'mal:N';  movie/tv -> 'tmdb:<movie|tv>:N' | 'imdb:ttN';
@@ -17,7 +20,7 @@ delta are local to the delta (its own facet_vocab); the merge remaps them by (ki
 """
 import sqlite3
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 DELTA_FORMAT = 1
 
 DIM_ORDER = [
@@ -33,6 +36,13 @@ DIM_ORDER = [
     "newcomer_accessibility", "rewatch_value", "commitment",
 ]
 
+# column -> schema version that introduced it (1 = original layout)
+COLUMN_SINCE = {
+    "key": 2, "kind": 2, "tmdb": 2, "imdb": 2, "release_date": 2, "cover": 2, "updated_at": 2,
+    "runtime": 3, "countries": 3, "languages": 3, "certification": 3, "seasons": 3, "directors": 3,
+    "studios": 3, "creators": 3, "source": 3, "votes": 3,
+}
+
 TITLE_COLUMNS = [
     ("id", "INTEGER PRIMARY KEY"), ("key", "TEXT"), ("kind", "TEXT DEFAULT 'anime'"),
     ("anilist", "INT"), ("mal", "INT"), ("tmdb", "INT"), ("imdb", "TEXT"),
@@ -42,12 +52,27 @@ TITLE_COLUMNS = [
     ("thumb", "TEXT"), ("pic", "TEXT"), ("cover", "TEXT"), ("pitch", "TEXT"), ("oneliner", "TEXT"),
     ("ending", "TEXT"), ("genres", "TEXT"), ("adult", "INT"), ("emb", "BLOB"), ("dims", "BLOB"),
     ("facets", "BLOB"), ("detail", "BLOB"), ("updated_at", "REAL"),
+    ("runtime", "INT"), ("countries", "TEXT"), ("languages", "TEXT"), ("certification", "TEXT"),
+    ("seasons", "INT"), ("directors", "TEXT"), ("studios", "TEXT"), ("creators", "TEXT"),
+    ("source", "TEXT"), ("votes", "INT"),
 ]
 TITLE_NAMES = [c for c, _ in TITLE_COLUMNS]
+NEW_IN_V3 = [c for c, v in COLUMN_SINCE.items() if v == 3]
 
 
-def create_schema(db: sqlite3.Connection, delta: bool = False) -> None:
-    cols = ", ".join(f"{n} {t}" for n, t in TITLE_COLUMNS)
+def columns_for(schema):
+    """[(name, type)] of the title table as written by `schema`."""
+    return [(n, t) for n, t in TITLE_COLUMNS if COLUMN_SINCE.get(n, 1) <= schema]
+
+
+def lines(v):
+    """list -> newline separated text (None when empty)."""
+    out = [str(x).strip() for x in (v or []) if str(x).strip()]
+    return "\n".join(out) if out else None
+
+
+def create_schema(db: sqlite3.Connection, delta: bool = False, schema: int = SCHEMA_VERSION) -> None:
+    cols = ", ".join(f"{n} {t}" for n, t in columns_for(schema))
     db.executescript(f"""
     CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);
     CREATE TABLE IF NOT EXISTS title({cols});

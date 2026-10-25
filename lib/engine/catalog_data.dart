@@ -23,6 +23,10 @@ class Show {
   final double? quality;
   final String pitch, oneliner;
   final List<String> genres;
+  // schema 3 filter columns (null / empty = unknown)
+  final int? runtime, seasons, votes;
+  final List<String> countries, languages, directors, studios, creators;
+  final String? certification, source;
 
   Show({
     required this.idx,
@@ -53,6 +57,16 @@ class Show {
     this.pitch = '',
     this.oneliner = '',
     this.genres = const [],
+    this.runtime,
+    this.seasons,
+    this.votes,
+    this.countries = const [],
+    this.languages = const [],
+    this.directors = const [],
+    this.studios = const [],
+    this.creators = const [],
+    this.certification,
+    this.source,
   });
 
   /// Display title: prefer English when available, romaji as fallback.
@@ -62,6 +76,29 @@ class Show {
       ? coverUrl!
       : ((pic ?? thumb) ?? '');
   bool get isAnime => kind == 'anime';
+
+  /// ongoing | ended | upcoming | unknown, normalised across AniList and TMDB wording.
+  String get statusGroup {
+    final s = (status ?? '').toLowerCase();
+    if (s.isEmpty) return 'unknown';
+    if (s.contains('not_yet') ||
+        s.contains('planned') ||
+        s.contains('upcoming') ||
+        s.contains('rumor'))
+      return 'upcoming';
+    if (s.contains('releas') ||
+        s.contains('return') ||
+        s.contains('continu') ||
+        s.contains('production') ||
+        s.contains('airing'))
+      return 'ongoing';
+    if (s.contains('finish') ||
+        s.contains('ended') ||
+        s.contains('cancel') ||
+        s.contains('released'))
+      return 'ended';
+    return 'unknown';
+  }
 }
 
 class FacetDef {
@@ -171,17 +208,22 @@ class CatalogData {
   }
 
   void _computePopularity() {
-    final order = List<int>.generate(n, (i) => i)
-      ..sort((a, b) => titles[b].popularity.compareTo(titles[a].popularity));
+    // Popularity is not comparable across media (anime: AniList members, movies/TV: TMDB votes), so the
+    // "obscure ... popular" rank is computed within each kind. Titles without data sit in the middle.
     obscurity = Float32List(n);
-    final known = order
-        .where((i) => titles[i].popularity > 0)
-        .toList(); // 0 = no data
-    for (var r = 0; r < known.length; r++) {
-      obscurity[known[r]] = known.length <= 1 ? 0.5 : r / (known.length - 1);
-    }
-    for (final i in order) {
-      if (titles[i].popularity <= 0) obscurity[i] = 0.5;
+    for (final kind in kinds) {
+      final ids = [
+        for (var i = 0; i < n; i++)
+          if (titles[i].kind == kind) i,
+      ];
+      final known = ids.where((i) => titles[i].popularity > 0).toList()
+        ..sort((a, b) => titles[b].popularity.compareTo(titles[a].popularity));
+      for (var r = 0; r < known.length; r++) {
+        obscurity[known[r]] = known.length <= 1 ? 0.5 : r / (known.length - 1);
+      }
+      for (final i in ids) {
+        if (titles[i].popularity <= 0) obscurity[i] = 0.5;
+      }
     }
     qual = Float32List(n);
     for (var i = 0; i < n; i++) {
@@ -227,6 +269,105 @@ class CatalogData {
     for (var i = 0; i < n; i++) {
       franchise[i] = find(i);
     }
+  }
+
+  // ---- data-driven filter options (computed lazily, per scope = set of media kinds) -----
+  final Map<String, Map<String, int>> _optionCache = {};
+
+  Iterable<int> idsOfKinds(Set<String> kinds) sync* {
+    for (var i = 0; i < n; i++) {
+      if (kinds.isEmpty || kinds.contains(titles[i].kind)) yield i;
+    }
+  }
+
+  /// value -> number of titles, for one of: studio, director, creator, country, language, rating,
+  /// source, format, decade, status, mood, warning. Sorted by the caller.
+  Map<String, int> optionCounts(String field, Set<String> kinds) {
+    final key = '$field|${(kinds.toList()..sort()).join(',')}';
+    return _optionCache.putIfAbsent(key, () {
+      final out = <String, int>{};
+      void add(String? v) {
+        if (v == null || v.isEmpty) return;
+        out[v] = (out[v] ?? 0) + 1;
+      }
+
+      for (final i in idsOfKinds(kinds)) {
+        final t = titles[i];
+        switch (field) {
+          case 'studio':
+            t.studios.forEach(add);
+          case 'director':
+            t.directors.forEach(add);
+          case 'creator':
+            t.creators.forEach(add);
+          case 'country':
+            t.countries.forEach(add);
+          case 'language':
+            t.languages.forEach(add);
+          case 'rating':
+            add(t.certification);
+          case 'source':
+            add(t.source);
+          case 'format':
+            add(t.format);
+          case 'decade':
+            if (t.year != null) add('${t.year! ~/ 10 * 10}s');
+          case 'status':
+            if (t.statusGroup != 'unknown') add(t.statusGroup);
+          case 'mood':
+          case 'warning':
+            final want = field == 'mood' ? 'moods' : 'content_warnings';
+            for (final (fid, w) in facetsOf(i)) {
+              if (vocab[fid].kind == want && w >= (field == 'mood' ? 4 : 3))
+                add(vocab[fid].value);
+            }
+        }
+      }
+      return out;
+    });
+  }
+
+  /// min/max of a numeric column among the given kinds (year, runtime, seasons, episodes, score), or null.
+  (num, num)? numericRange(String field, Set<String> kinds) {
+    num? lo, hi;
+    for (final i in idsOfKinds(kinds)) {
+      final t = titles[i];
+      final v = switch (field) {
+        'year' => t.year,
+        'runtime' => t.runtime,
+        'seasons' => t.seasons,
+        'episodes' => t.episodes,
+        'score' => t.meanScore == null ? null : t.meanScore! / 10,
+        _ => null,
+      };
+      if (v == null || v <= 0) continue;
+      lo = lo == null || v < lo ? v : lo;
+      hi = hi == null || v > hi ? v : hi;
+    }
+    return lo == null ? null : (lo, hi!);
+  }
+
+  /// How many titles of these kinds carry data for a column (filters without data are hidden).
+  int countWith(String field, Set<String> kinds) {
+    var k = 0;
+    for (final i in idsOfKinds(kinds)) {
+      final t = titles[i];
+      final has = switch (field) {
+        'runtime' => t.runtime != null,
+        'seasons' => t.seasons != null,
+        'country' => t.countries.isNotEmpty,
+        'language' => t.languages.isNotEmpty,
+        'rating' => t.certification != null,
+        'director' => t.directors.isNotEmpty,
+        'studio' => t.studios.isNotEmpty,
+        'creator' => t.creators.isNotEmpty,
+        'source' => t.source != null,
+        'score' => t.meanScore != null,
+        _ => true,
+      };
+      if (has) k++;
+    }
+    return k;
   }
 
   Iterable<(int fid, double w)> facetsOf(int idx) sync* {

@@ -12,7 +12,7 @@ Exit codes: 0 applied or already up to date, 2 rejected.
 import sqlite3
 import sys
 
-from catalog_schema import SCHEMA_VERSION, TITLE_NAMES, dequantize, quantize, unpack_facets
+from catalog_schema import SCHEMA_VERSION, TITLE_COLUMNS, dequantize, quantize, unpack_facets
 
 
 def meta(db, table="meta"):
@@ -24,26 +24,28 @@ def has_table(db, name):
 
 
 def migrate(db):
-    if int(meta(db).get("schema", 0)) >= SCHEMA_VERSION:
+    """Upgrade an installed catalog to the current schema (1 -> 2 -> 3), in place. True if changed."""
+    ver = int(meta(db).get("schema", 0))
+    if ver >= SCHEMA_VERSION:
         return False
     have = {r[1] for r in db.execute("PRAGMA table_info(title)")}
-    for col, typ in {"key": "TEXT", "kind": "TEXT DEFAULT 'anime'", "tmdb": "INT", "imdb": "TEXT",
-                     "release_date": "TEXT", "cover": "TEXT", "updated_at": "REAL"}.items():
-        if col not in have:
-            db.execute(f"ALTER TABLE title ADD COLUMN {col} {typ}")
-    db.execute("UPDATE title SET kind='anime' WHERE kind IS NULL")
-    db.execute("UPDATE title SET key = CASE WHEN anilist IS NOT NULL THEN 'anilist:'||anilist "
-               "WHEN mal IS NOT NULL THEN 'mal:'||mal ELSE 'id:'||id END WHERE key IS NULL")
-    db.execute("UPDATE title SET cover = COALESCE(pic, thumb) WHERE cover IS NULL")
-    for t, extra in (("rel", ("type", "type TEXT")), ("rec", ("rating", "rating INT"))):
-        cols = {r[1] for r in db.execute(f"PRAGMA table_info({t})")}
-        if "other_key" in cols:
-            continue
-        db.execute(f"CREATE TABLE {t}_v2(id INT, other_key TEXT, {extra[1]})")
-        db.execute(f"INSERT INTO {t}_v2 SELECT id, 'anilist:'||other_anilist, {extra[0]} FROM {t}")
-        db.execute(f"DROP TABLE {t}")
-        db.execute(f"ALTER TABLE {t}_v2 RENAME TO {t}")
-        db.execute(f"CREATE INDEX IF NOT EXISTS {t}_id ON {t}(id)")
+    for name, typ in TITLE_COLUMNS:  # adds every column the catalog is missing (v2 and v3 additions)
+        if name not in have and name != "id":
+            db.execute(f"ALTER TABLE title ADD COLUMN {name} {typ}")
+    if ver < 2:
+        db.execute("UPDATE title SET kind='anime' WHERE kind IS NULL")
+        db.execute("UPDATE title SET key = CASE WHEN anilist IS NOT NULL THEN 'anilist:'||anilist "
+                   "WHEN mal IS NOT NULL THEN 'mal:'||mal ELSE 'id:'||id END WHERE key IS NULL")
+        db.execute("UPDATE title SET cover = COALESCE(pic, thumb) WHERE cover IS NULL")
+        for t, extra in (("rel", ("type", "type TEXT")), ("rec", ("rating", "rating INT"))):
+            cols = {r[1] for r in db.execute(f"PRAGMA table_info({t})")}
+            if "other_key" in cols:
+                continue
+            db.execute(f"CREATE TABLE {t}_v2(id INT, other_key TEXT, {extra[1]})")
+            db.execute(f"INSERT INTO {t}_v2 SELECT id, 'anilist:'||other_anilist, {extra[0]} FROM {t}")
+            db.execute(f"DROP TABLE {t}")
+            db.execute(f"ALTER TABLE {t}_v2 RENAME TO {t}")
+            db.execute(f"CREATE INDEX IF NOT EXISTS {t}_id ON {t}(id)")
     db.execute("INSERT OR REPLACE INTO meta VALUES('schema', ?)", (str(SCHEMA_VERSION),))
     db.commit()
     return True

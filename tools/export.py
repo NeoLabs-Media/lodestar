@@ -21,7 +21,7 @@ from pathlib import Path
 
 import numpy as np
 
-from catalog_schema import (DELTA_FORMAT, DIM_ORDER, SCHEMA_VERSION, TITLE_NAMES, create_schema, pack_facets,
+from catalog_schema import (DELTA_FORMAT, DIM_ORDER, SCHEMA_VERSION, TITLE_NAMES, create_schema, lines, pack_facets,
                             title_key)
 
 HERE = Path(__file__).parent
@@ -139,6 +139,23 @@ def names(v, n=6):
     return out[:n]
 
 
+def runtime_minutes(p):
+    v = p.get("runtime") or p.get("duration_min")
+    try:
+        return int(round(float(v))) if v else None
+    except (TypeError, ValueError):
+        return None
+
+
+def season_count(p):
+    v = p.get("seasons")
+    if isinstance(v, int):
+        return v
+    if isinstance(v, list):
+        return len(v) or None
+    return None
+
+
 def credits(p):
     """Movie/TV extras for the detail screen (empty for anime)."""
     out = {}
@@ -218,7 +235,7 @@ def load_facets(db):
     return facets, df
 
 
-def build_catalog(db, evecs, out_path, *, since=None, removed=(), snapshot=""):
+def build_catalog(db, evecs, out_path, *, since=None, removed=(), snapshot="", only_kind=None, trim_detail=False):
     """Writes a full catalog (since=None) or a delta of the titles with updated_at > since."""
     delta = since is not None
     facets, df = load_facets(db)
@@ -232,6 +249,8 @@ def build_catalog(db, evecs, out_path, *, since=None, removed=(), snapshot=""):
     rows = [r for r in rows if r["anime_id"] in evecs]
     if delta:
         rows = [r for r in rows if (r["updated_at"] or 0) > since]
+    if only_kind:
+        rows = [r for r in rows if (r.get("media_type") or "anime").lower() == only_kind]
     if not rows:
         print("nothing to write")
         return 0
@@ -290,6 +309,9 @@ def build_catalog(db, evecs, out_path, *, since=None, removed=(), snapshot=""):
         detail["moods"] = [m.get("name") for m in ((p.get("emotion") or {}).get("moods") or [])[:6]]
         detail["themes"] = [m.get("name") for m in ((p.get("emotion") or {}).get("themes") or [])[:6]]
         detail["dur"] = p.get("duration_min")
+        if trim_detail:  # web-first-load diet: drop the spoiler text and the similar-titles list
+            for k in ("full", "sim", "endd", "after", "ideal"):
+                detail.pop(k, None)
         release = r.get("release_date") or p.get("release_date")
         year = p.get("year") or (int(release[:4]) if release and release[:4].isdigit() else None)
         cover = (p.get("cover") or r.get("cover")) if kind != "anime" else (r.get("picture") or r.get("thumbnail"))
@@ -309,6 +331,14 @@ def build_catalog(db, evecs, out_path, *, since=None, removed=(), snapshot=""):
             "genres": ",".join(p.get("genres") or []), "adult": 0, "emb": q, "dims": bytes(dims), "facets": fb,
             "detail": zlib.compress(json.dumps(detail, ensure_ascii=False, separators=(",", ":")).encode(), 9),
             "updated_at": upd,
+            # schema 3: queryable filter columns
+            "runtime": runtime_minutes(p), "countries": lines(names(p.get("countries"), 8)),
+            "languages": lines(names(p.get("languages"), 6)), "certification": p.get("content_rating") or None,
+            "seasons": season_count(p), "directors": lines(names(p.get("directors"), 4)),
+            "studios": lines(names(p.get("studios"), 4)),
+            "creators": lines(names(p.get("created_by"), 4) + names(p.get("networks"), 3)),
+            "source": p.get("source_material") or None,
+            "votes": p.get("vote_count") or None,
         }
         out.execute(f"INSERT INTO title({','.join(TITLE_NAMES)}) VALUES({','.join('?' * len(TITLE_NAMES))})",
                     [row[c] for c in TITLE_NAMES])
@@ -338,7 +368,7 @@ def build_catalog(db, evecs, out_path, *, since=None, removed=(), snapshot=""):
     out.commit()
     out.execute("VACUUM")
     out.close()
-    if not delta:
+    if not delta and not only_kind:
         (out_path.parent / "catalog.version").write_text(f"{meta['built_at']} n={n_ok} schema={SCHEMA_VERSION}\n")
     print(f"wrote {out_path} with {n_ok} titles{' (delta)' if delta else ''}, {out_path.stat().st_size / 1e6:.1f} MB")
     return n_ok
@@ -352,6 +382,9 @@ def main():
     ap.add_argument("--base", type=Path, help="an existing catalog.db: delta starts at its snapshot and lists "
                                               "titles it contains that no longer exist")
     ap.add_argument("--out", type=Path, help="output path (default catalog.db / catalog_delta.db)")
+    ap.add_argument("--split-kinds", action="store_true",
+                    help="write one catalog per media kind (catalog.anime.db, catalog.movie.db, catalog.tv.db)")
+    ap.add_argument("--trim-detail", action="store_true", help="drop spoiler/similar blobs from the detail JSON")
     args = ap.parse_args()
     CACHE.mkdir(exist_ok=True)
     if not args.skip_merge:
@@ -372,9 +405,15 @@ def main():
         now_ids = {r[0] for r in db.execute("SELECT anime_id FROM slim")}
         removed = sorted(base_ids - now_ids)
     if since is not None:
-        build_catalog(db, evecs, args.out or DELTA_OUT, since=since, removed=removed, snapshot=snapshot)
+        build_catalog(db, evecs, args.out or DELTA_OUT, since=since, removed=removed, snapshot=snapshot,
+                      trim_detail=args.trim_detail)
+    elif args.split_kinds:
+        base = args.out or OUT
+        for kind in ("anime", "movie", "tv"):
+            build_catalog(db, evecs, base.with_name(f"catalog.{kind}.db"), snapshot=snapshot, only_kind=kind,
+                          trim_detail=args.trim_detail)
     else:
-        build_catalog(db, evecs, args.out or OUT, snapshot=snapshot)
+        build_catalog(db, evecs, args.out or OUT, snapshot=snapshot, trim_detail=args.trim_detail)
 
 
 if __name__ == "__main__":

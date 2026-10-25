@@ -6,7 +6,7 @@ import 'package:lodestar/engine/recommender.dart';
 import 'package:lodestar/engine/search.dart';
 
 void main() {
-  final c = CatalogStore.open('test/fixtures/mixed_v2.db').data;
+  final c = CatalogStore.open('test/fixtures/mixed.db').data;
   final rec = Recommender(c);
   final search = TitleSearch(c);
   int idx(int id) => c.idToIdx[id]!;

@@ -37,11 +37,11 @@ jobs:
           c = sqlite3.connect("file:catalog.db?mode=ro", uri=True)
           meta = dict(c.execute("select key, value from meta"))
           n = c.execute("select count(*) from title").fetchone()[0]
-          assert meta.get("schema") in ("1", "2"), f"unsupported schema {meta.get('schema')!r}"
+          assert meta.get("schema") in ("1", "2", "3"), f"unsupported schema {meta.get('schema')!r}"
           assert n > 0, "catalog has no titles"
           assert c.execute("select count(*) from facet_vocab").fetchone()[0] > 0, "no facet vocabulary"
           kinds = "anime"
-          if meta["schema"] == "2":
+          if meta["schema"] in ("2", "3"):
               kinds = ", ".join(r[0] for r in c.execute("select distinct kind from title order by 1"))
               assert c.execute("select count(*) from title where key is null").fetchone()[0] == 0, "titles without a key"
           open("catalog.version", "w").write(f"{meta['built_at']} n={n} schema={meta['schema']}\n")

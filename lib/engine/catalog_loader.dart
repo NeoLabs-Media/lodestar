@@ -56,7 +56,9 @@ class CatalogStore {
     final rows = db.select(
       'SELECT id,${col('key')},${col('kind', "'anime'")},anilist,mal,${col('tmdb')},${col('imdb')},'
       'title,title_en,syn,year,season,format,episodes,status,${col('release_date')},popularity,mean_score,tier,quality,'
-      'thumb,pic,${col('cover')},pitch,oneliner,ending,genres,emb,dims,facets FROM title ORDER BY id',
+      'thumb,pic,${col('cover')},pitch,oneliner,ending,genres,emb,dims,facets,'
+      '${col('runtime')},${col('countries')},${col('languages')},${col('certification')},${col('seasons')},'
+      '${col('directors')},${col('studios')},${col('creators')},${col('source')},${col('votes')} FROM title ORDER BY id',
     );
     final n = rows.length;
     final titles = <Show>[];
@@ -109,6 +111,16 @@ class CatalogStore {
               .split(',')
               .where((s) => s.isNotEmpty)
               .toList(),
+          runtime: r['runtime'] as int?,
+          seasons: r['seasons'] as int?,
+          votes: r['votes'] as int?,
+          countries: _list(r['countries']),
+          languages: _list(r['languages']),
+          directors: _list(r['directors']),
+          studios: _list(r['studios']),
+          creators: _list(r['creators']),
+          certification: r['certification'] as String?,
+          source: r['source'] as String?,
         ),
       );
       final scale = double.parse(meta['emb_scale']!);
@@ -206,3 +218,7 @@ class CatalogStore {
 String _legacyKey(int id, int? anilist, int? mal) => anilist != null
     ? 'anilist:$anilist'
     : (mal != null ? 'mal:$mal' : 'id:$id');
+
+List<String> _list(Object? v) => v is String && v.isNotEmpty
+    ? v.split('\n').where((x) => x.isNotEmpty).toList()
+    : const [];
