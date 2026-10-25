@@ -192,6 +192,68 @@ class ScopeFilters {
     return true;
   }
 
+  /// One removable chip per active filter that applies in [scope]: (label, remove).
+  List<(String, void Function())> chips(String scope) {
+    final out = <(String, void Function())>[];
+    void each(Set<String> set, String Function(String) label) {
+      for (final v in set.toList()) {
+        out.add((label(v), () => set.remove(v)));
+      }
+    }
+
+    each(categories, (v) => v);
+    each(moods, (v) => '$v mood');
+    each(excludeWarnings, (v) => 'no $v');
+    if (yearMin != null || yearMax != null) {
+      out.add((
+        yearMin != null && yearMax != null
+            ? '$yearMin–$yearMax'
+            : yearMin != null
+            ? 'from $yearMin'
+            : 'up to $yearMax',
+        () => yearMin = yearMax = null,
+      ));
+    }
+    if (minScore != null)
+      out.add((
+        'score ≥ ${minScore!.toStringAsFixed(1)}',
+        () => minScore = null,
+      ));
+    if (scope == 'anime') {
+      each(formats, (v) => v);
+      if (maxEpisodes != null)
+        out.add(('≤ $maxEpisodes ep', () => maxEpisodes = null));
+      each(studios, (v) => v);
+      each(sources, (v) => 'from ${v.toLowerCase()}');
+    }
+    if (scope == 'movie') {
+      if (runtimeMin != null || runtimeMax != null) {
+        out.add((
+          runtimeMin != null && runtimeMax != null
+              ? '$runtimeMin–$runtimeMax min'
+              : runtimeMax != null
+              ? '≤ $runtimeMax min'
+              : '≥ $runtimeMin min',
+          () => runtimeMin = runtimeMax = null,
+        ));
+      }
+      each(decades, (v) => v);
+      each(directors, (v) => 'dir. $v');
+    }
+    if (scope == 'movie' || scope == 'tv') {
+      each(countries, (v) => v);
+      each(languages, (v) => v);
+      each(ratings, (v) => v);
+    }
+    if (scope == 'tv') {
+      if (maxSeasons != null)
+        out.add(('≤ $maxSeasons seasons', () => maxSeasons = null));
+      each(statuses, (v) => v);
+      each(creators, (v) => v);
+    }
+    return out;
+  }
+
   /// Short human text of the filters that apply in [scope], for explanations ("PG-13, 80–120 min").
   String describe(String scope) {
     final p = <String>[];

@@ -47,6 +47,13 @@ class Controls {
   /// Filter state per scope ('all', 'anime', 'movie', 'tv'); only the active scope's filters apply.
   final Map<String, ScopeFilters> scopes = {};
 
+  /// A second set of hard filters that must ALSO hold (not persisted). The assistant uses it to layer the
+  /// model's own search arguments on top of the user's filters without ever being able to loosen them.
+  Controls? also;
+
+  /// Judge each title by the filters of its own kind (instead of the single active scope). Used with [also].
+  bool perKind = false;
+
   /// One selected kind -> that kind's scope (with its specific filters); anything else -> 'all' (common filters).
   String get scope => kinds.length == 1 ? kinds.first : 'all';
   ScopeFilters get active => scopes.putIfAbsent(scope, ScopeFilters.new);
@@ -108,6 +115,16 @@ class Controls {
   /// Number of active hard filters (plus the media restriction) for badges.
   int activeCount({bool multiKindCatalog = false}) =>
       active.activeCount(scope) + (multiKindCatalog ? kinds.length : 0);
+
+  /// One removable chip per active restriction: (label, remove).
+  List<(String, void Function())> chips({bool multiKindCatalog = true}) {
+    final names = {'anime': 'Anime', 'movie': 'Movies', 'tv': 'TV'};
+    return [
+      if (multiKindCatalog)
+        for (final k in kinds.toList()) (names[k] ?? k, () => kinds.remove(k)),
+      ...active.chips(scope),
+    ];
+  }
 
   /// Short text of everything that is restricting the feed, e.g. "movies · 80–120 min, PG-13" ('' = nothing).
   String describe() {
@@ -624,12 +641,13 @@ class Recommender {
   }
 
   bool _passes(int i, Controls ctl) {
+    if (ctl.also != null && !_passes(i, ctl.also!)) return false;
     final t = c.titles[i];
     if (ctl.kinds.isNotEmpty && !ctl.kinds.contains(t.kind)) return false;
-    final f = ctl.active;
+    final f = ctl.perKind ? ctl.scopeFilters(t.kind) : ctl.active;
     if (f.categories.isNotEmpty && !f.categories.any((k) => inCategory(i, k)))
       return false;
-    if (!f.passes(t, ctl.scope)) return false;
+    if (!f.passes(t, ctl.perKind ? t.kind : ctl.scope)) return false;
     if (f.moods.isNotEmpty || f.excludeWarnings.isNotEmpty) {
       var moodOk = f.moods.isEmpty;
       for (final (fid, w) in c.facetsOf(i)) {
@@ -902,6 +920,9 @@ class Recommender {
     );
   }
 
+  /// When set, explanations never mention plot-revealing tags or outcome dimensions (the assistant's spoiler switch).
+  bool spoilerFreeWhy = false;
+
   /// Specific "why this" text from the largest contributors.
   (String, int?, List<String>) explain(
     int idx,
@@ -925,6 +946,7 @@ class Recommender {
       final rs = m.reasonFacets[fid];
       if (rs != null && w >= 4) {
         final f = c.vocab[fid];
+        if (spoilerFreeWhy && isSpoilerFacet(f.kind, f.value)) continue;
         phrases.add((10 + rs * w, facetPhrase(f.kind, f.value), 'f$fid'));
         reasonHit.add(fid);
       }
@@ -935,6 +957,7 @@ class Recommender {
       final f = c.vocab[fid];
       if (f.kind == 'content_warnings' || f.kind == 'relationship_types')
         continue;
+      if (spoilerFreeWhy && isSpoilerFacet(f.kind, f.value)) continue;
       if (reasonHit.contains(fid)) continue;
       var contrib = m.wFac[fid] * (w / 10) * c.facetIdf[fid] / fn;
       if (f.kind == 'genre' || f.kind == 'anilist_tag') contrib *= 0.55;
@@ -955,6 +978,7 @@ class Recommender {
       final z = c.dimZ[idx * D + d];
       final contrib = m.wDim[d] * z;
       if (contrib > bestDim && z.abs() > 0.8) {
+        if (spoilerFreeWhy && spoilerDims.contains(c.dimNames[d])) continue;
         final ph = dimPhrases[c.dimNames[d]];
         if (ph == null) continue;
         bestDim = contrib;

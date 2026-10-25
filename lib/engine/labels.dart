@@ -233,3 +233,27 @@ GenericReason? genericReasonByKey(String key) {
   }
   return null;
 }
+
+/// Facet kinds that mostly describe how a story ends or turns out.
+const _spoilerKinds = {
+  'ending_types',
+  'romance_payoffs',
+  'character_arc_types',
+  'narrative_devices',
+};
+final _spoilerWords = RegExp(
+  r'twist|death|dies|dead|killed|reveal|betray|sacrific|ending|unreliable|identity|plot ?armor|tragic end|major character|spoiler',
+  caseSensitive: false,
+);
+
+/// Is this tag / content warning something that gives away the plot?
+bool isSpoilerFacet(String kind, String value) =>
+    _spoilerKinds.contains(kind) || _spoilerWords.hasMatch(value);
+
+/// Dimensions that describe the outcome rather than the experience.
+const spoilerDims = {
+  'ending_satisfaction',
+  'romantic_payoff',
+  'tragedy',
+  'emotional_catharsis',
+};

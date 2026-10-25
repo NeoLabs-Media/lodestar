@@ -9,6 +9,11 @@ import 'package:path_provider/path_provider.dart';
 
 import 'package:http/http.dart' as http;
 
+import 'assistant/llm.dart';
+import 'assistant/openrouter.dart';
+import 'assistant/session.dart';
+import 'assistant/settings.dart';
+import 'assistant/tools.dart';
 import 'data/backup.dart';
 import 'data/crunchyroll.dart';
 import 'platform/web_bridge.dart';
@@ -26,6 +31,89 @@ class AppState extends ChangeNotifier {
   late Recommender recommender;
   late TitleSearch search;
   late UserStore users;
+
+  // ---- optional AI assistant ----
+  late AiSettings ai = AiSettings(users);
+
+  /// Replaced in tests to avoid any real network access.
+  LlmProvider Function(String key) providerFactory = (key) =>
+      OpenRouterProvider(key);
+  AssistantSession? _assistant;
+  Controls? _chatControls;
+
+  /// The chat's own filters (used when "use my feed filters" is off), loaded from the saved settings.
+  Controls get chatControls => _chatControls ??= ai.loadChatFilters();
+
+  /// The filters the assistant must obey right now.
+  Controls get assistantControls => ai.useFeedFilters ? controls : chatControls;
+
+  void setChatControls(Controls c) {
+    _chatControls = c;
+    ai.saveChatFilters(c);
+    notifyListeners();
+    _assistant?.syncState();
+  }
+
+  void setUseFeedFilters(bool v) {
+    ai.useFeedFilters = v;
+    notifyListeners();
+    _assistant?.syncState();
+  }
+
+  void setSpoilers(bool v) {
+    ai.spoilers = v;
+    notifyListeners();
+    _assistant?.syncState();
+  }
+
+  LlmProvider providerFor() => providerFactory(ai.apiKey ?? '');
+
+  /// The (lazily created) assistant chat; rebuilt only by [resetAssistant].
+  AssistantSession get assistant => _assistant ??= AssistantSession(
+    providerOf: providerFor,
+    tools: AssistantTools(
+      AssistantContext(
+        store: store,
+        rec: recommender,
+        search: search,
+        controls: () => assistantControls,
+        entries: () => entries.values.toList(),
+        libraryAllowed: () => ai.libraryAllowed,
+        spoilers: () => ai.spoilers,
+      ),
+    ),
+    liveState: () => {
+      'spoilers': ai.spoilers ? 'on' : 'off',
+      'filters': assistantControls.describe(),
+    },
+    model: () => ai.model,
+    systemPrompt: () => buildSystemPrompt(
+      titleCount: data.n,
+      kinds: data.kinds,
+      filters: assistantControls.describe(),
+      libraryAllowed: ai.libraryAllowed,
+      spoilers: ai.spoilers,
+      now: DateTime.now(),
+    ),
+    runAction: _runAssistantAction,
+  );
+
+  void resetAssistant() {
+    _assistant?.dispose();
+    _assistant = null;
+    notifyListeners();
+  }
+
+  void _runAssistantAction(PendingAction a) {
+    switch (a.type) {
+      case 'plan':
+        setStatus(a.idx, EntryStatus.planned);
+      case 'watched':
+        rate(a.idx, rating: a.rating);
+      default:
+        setStatus(a.idx, EntryStatus.notInterested);
+    }
+  }
 
   bool ready = false;
   String? error;
@@ -133,6 +221,9 @@ class AppState extends ChangeNotifier {
 
   /// Makes [s] the active catalog and re-links the user's entries to it (ids are stable).
   void _attach(CatalogStore s) {
+    _assistant?.dispose(); // its tools hold the previous catalog
+    _assistant = null;
+    _chatControls = null;
     store = s;
     data = s.data;
     recommender = Recommender(data);
@@ -566,6 +657,7 @@ class AppState extends ChangeNotifier {
   void setControls(Controls c, {bool persist = true}) {
     controls = c;
     if (persist) saveControls();
+    if (ai.useFeedFilters) _assistant?.syncState();
     _changed(debounced: true);
   }
 

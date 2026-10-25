@@ -18,7 +18,8 @@
 |---|---|
 | **It asks *why*** | Rate a title, then tap what worked: *slow-burn romance*, *bittersweet ending*, *found family*… Tap twice to **dislike** a tag instead (even on a show you loved) and it vanishes from your feed. |
 | **Hidden gems on a dial** | One switch takes you from popular picks to deep cuts. Every card explains itself: "like *Your Lie in April*, which you rated 9.5". |
-| **Private by design** | No account, no server, no tracking, no AI calls. Your ratings live on your device (or in your browser). |
+| **Private by design** | No account, no tracking, no server of ours. Your ratings live on your device (or in your browser). |
+| **Optional assistant** | Off by default. Add your own OpenRouter key and ask in plain language ("something like *Monster* but lighter"). It searches this catalog with tools, never invents titles, hides spoilers unless you flip the switch, obeys your filters, and only reads your library if you allow it. Changes to your list always wait for your tap. |
 
 ## How it works
 

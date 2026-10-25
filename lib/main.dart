@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import 'app_state.dart';
 import 'platform/splash.dart';
+import 'ui/assistant_page.dart';
 import 'ui/crunchyroll_page.dart';
 import 'ui/feed_page.dart';
 import 'ui/library_page.dart';
@@ -111,6 +112,7 @@ class _HomeState extends State<Home> {
       FeedPage(onGoLibrary: () => setState(() => tab = 1)),
       const LibraryPage(),
       const TastePage(),
+      AssistantPage(onOpenSettings: () => setState(() => tab = 4)),
       const SettingsPage(),
     ];
     final wide = MediaQuery.sizeOf(context).width >= 800;
@@ -118,6 +120,7 @@ class _HomeState extends State<Home> {
       (Icons.auto_awesome_outlined, Icons.auto_awesome, 'For you'),
       (Icons.video_library_outlined, Icons.video_library, 'Library'),
       (Icons.insights_outlined, Icons.insights, 'Taste'),
+      (Icons.forum_outlined, Icons.forum, 'Assistant'),
       (Icons.settings_outlined, Icons.settings, 'Settings'),
     ];
     final body = AnimatedSwitcher(
