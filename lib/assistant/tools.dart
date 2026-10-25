@@ -160,6 +160,11 @@ class AssistantTools {
     'enum': ['anime', 'movie', 'tv'],
     'description': 'restrict to one media type',
   };
+  static const _seenProp = {
+    'type': 'boolean',
+    'description':
+        'default true when library access is on: leave out titles the user watched, skipped or ignored. Set false only if they ask for things they have seen.',
+  };
   static const _idProp = {
     'type': 'integer',
     'description': 'catalog title id as returned by the other tools',
@@ -172,6 +177,7 @@ class AssistantTools {
           'The user\'s filters are always applied and cannot be loosened. Returns compact matches.',
       _obj({
         'query': {'type': 'string'},
+        'exclude_seen': _seenProp,
         'kind': _kindProp,
         'limit': {
           'type': 'integer',
@@ -210,6 +216,7 @@ class AssistantTools {
           'id': _idProp,
           'n': {'type': 'integer'},
           'kind': _kindProp,
+          'exclude_seen': _seenProp,
           'filters': _obj(_filterProps),
         },
         ['id'],
@@ -224,6 +231,42 @@ class AssistantTools {
       'get_taste_profile',
       'What the app has learned about the user\'s taste (needs library access).',
       _obj({}),
+    ),
+    ToolSpec(
+      'check_library',
+      'Did the user watch / plan / skip these? Resolves free-text titles (typo tolerant, romaji or English) and/or ids and returns, for each, '
+          'the matched catalog title, the library status, the rating and franchise_seen. Use it for "did I watch X?" and "have I seen any of these?". Needs library access.',
+      _obj({
+        'titles': {
+          'type': 'array',
+          'items': {'type': 'string'},
+          'description': 'titles as the user typed them (max 20)',
+        },
+        'ids': {
+          'type': 'array',
+          'items': {'type': 'integer'},
+        },
+      }),
+    ),
+    ToolSpec(
+      'list_library',
+      'Walk the user\'s library page by page (use when they ask what they watched, rated highest, planned, skipped). Needs library access.',
+      _obj({
+        'status': {
+          'type': 'string',
+          'enum': ['watched', 'planned', 'not_interested', 'ignored'],
+        },
+        'kind': _kindProp,
+        'sort': {
+          'type': 'string',
+          'enum': ['recent', 'rating', 'title'],
+        },
+        'limit': {
+          'type': 'integer',
+          'description': 'page size (default 15, max 30)',
+        },
+        'offset': {'type': 'integer'},
+      }),
     ),
     ToolSpec(
       'get_library_summary',
@@ -266,6 +309,22 @@ class AssistantTools {
 
   /// Runs one tool call. Never throws: failures come back as `{"error": …}` data for the model.
   ToolOutcome call(String name, String rawArgs) {
+    _libCache = null;
+    final out = _call(name, rawArgs);
+    // with library access off the model must know it cannot tell what was watched
+    if (!ctx.libraryAllowed() &&
+        out.ids.isNotEmpty &&
+        !out.json.containsKey('error')) {
+      return ToolOutcome(
+        {...out.json, 'library_known': false},
+        ids: out.ids,
+        pending: out.pending,
+      );
+    }
+    return out;
+  }
+
+  ToolOutcome _call(String name, String rawArgs) {
     Map<String, dynamic> a;
     try {
       final j = rawArgs.trim().isEmpty
@@ -294,6 +353,10 @@ class AssistantTools {
           return _taste();
         case 'get_library_summary':
           return _library(a);
+        case 'check_library':
+          return _checkLibrary(a);
+        case 'list_library':
+          return _listLibrary(a);
         case 'add_to_plan':
           return _action('plan', a);
         case 'mark_watched':
@@ -339,11 +402,122 @@ class AssistantTools {
       if (rec != null && rec.gem) 'hidden_gem': true,
     };
     m.removeWhere((k, v) => v == null || (v is List && v.isEmpty));
+    m.addAll(_libraryFields(idx));
     return m;
   }
 
   static String _cut(String s, int n) =>
       s.length <= n ? s : '${s.substring(0, n - 1).trimRight()}…';
+
+  // ------------------------------------------------------------------ library status on every title
+  Map<int, UserEntry>? _libCache;
+  Map<int, UserEntry> get _lib =>
+      _libCache ??= {for (final e in ctx.entries()) e.id: e};
+
+  String _reasonLabels1(String r) {
+    if (r.startsWith('g:') || r.startsWith('n:'))
+      return genericReasonByKey(r.substring(2))?.label.toLowerCase() ??
+          r.substring(2);
+    final p = r.substring(2).split('|');
+    return p.length == 2
+        ? facetChipLabel(p[0], p[1]).toLowerCase()
+        : r.substring(2);
+  }
+
+  /// `library` (+ `franchise_seen`) for one title; empty when library access is off.
+  Map<String, dynamic> _libraryFields(int idx) {
+    if (!ctx.libraryAllowed()) return const {};
+    final d = ctx.data;
+    final t = d.titles[idx];
+    final e = _lib[t.id];
+    bool ok(String r) =>
+        ctx.spoilers() ||
+        !(r.startsWith('f:') || r.startsWith('x:')) ||
+        !isSpoilerFacet(
+          r.substring(2).split('|').first,
+          r.substring(2).split('|').last,
+        );
+    final liked = e == null
+        ? <String>[]
+        : [
+            for (final r in e.reasons)
+              if ((r.startsWith('g:') || r.startsWith('f:')) && ok(r))
+                _reasonLabels1(r),
+          ];
+    final disliked = e == null
+        ? <String>[]
+        : [
+            for (final r in e.reasons)
+              if ((r.startsWith('n:') || r.startsWith('x:')) && ok(r))
+                _reasonLabels1(r),
+          ];
+    final lib = <String, dynamic>{
+      'status': e == null
+          ? 'none'
+          : switch (e.status) {
+              EntryStatus.watched => 'watched',
+              EntryStatus.planned => 'planned',
+              EntryStatus.notInterested => 'not_interested',
+              EntryStatus.ignored => 'ignored',
+            },
+      if (e?.rating != null) 'rating': e!.rating,
+      if (liked.isNotEmpty) 'liked': liked.take(6).toList(),
+      if (disliked.isNotEmpty) 'disliked': disliked.take(6).toList(),
+    };
+    // related entries of the same franchise that the user has watched or planned
+    final seen = <String>[];
+    for (final (o, type) in d.relations[idx]) {
+      final other = d.titles[o];
+      final oe = _lib[other.id];
+      if (oe == null ||
+          (oe.status != EntryStatus.watched &&
+              oe.status != EntryStatus.planned))
+        continue;
+      final part = switch (type) {
+        'PREQUEL' || 'PARENT' => 'previous part',
+        'SEQUEL' => 'sequel',
+        'SIDE_STORY' => 'side story',
+        'SPIN_OFF' => 'spin-off',
+        'SUMMARY' || 'ALTERNATIVE' => 'alternate version',
+        _ => 'related entry',
+      };
+      seen.add(
+        'you ${oe.status == EntryStatus.watched ? 'watched' : 'planned'} the $part: ${other.display}${oe.rating == null ? '' : ' (rated ${oe.rating == oe.rating!.roundToDouble() ? oe.rating!.toInt() : oe.rating})'}',
+      );
+      if (seen.length >= 2) break;
+    }
+    return {
+      'library': lib,
+      if (seen.isNotEmpty) 'franchise_seen': seen.join('; '),
+    };
+  }
+
+  bool _isSeen(int idx) {
+    if (!ctx.libraryAllowed()) return false;
+    final e = _lib[ctx.data.titles[idx].id];
+    return e != null &&
+        (e.status == EntryStatus.watched ||
+            e.status == EntryStatus.notInterested ||
+            e.status == EntryStatus.ignored);
+  }
+
+  /// Keeps up to [limit] titles; seen ones are dropped (and counted) when [exclude].
+  (List<int>, int) _dropSeen(List<int> idxs, int limit, bool exclude) {
+    final kept = <int>[];
+    var hidden = 0;
+    for (final i in idxs) {
+      if (kept.length >= limit) break;
+      if (exclude && _isSeen(i)) {
+        hidden++;
+      } else {
+        kept.add(i);
+      }
+    }
+    return (kept, hidden);
+  }
+
+  bool _excludeSeen(Map<String, dynamic> a) =>
+      ctx.libraryAllowed() && a['exclude_seen'] != false;
 
   int? _idx(Map<String, dynamic> a) {
     final id = a['id'];
@@ -472,24 +646,31 @@ class AssistantTools {
     final ctl = _controls(a);
     final limit = _n(a['limit'], 6, 10);
     final q = '${a['query'] ?? ''}'.trim();
-    final List<int> idxs;
+    final exclude = _excludeSeen(a);
+    final List<int> pool;
     if (q.isEmpty) {
-      idxs = ctx.rec.browse(ctl, n: limit);
+      pool = ctx.rec.browse(ctl, n: limit * 4 + 30);
     } else {
-      idxs = [
+      pool = [
         for (final h in ctx.search.search(
           q,
           limit: 40,
           kind: ctl.kinds.length == 1 ? ctl.kinds.first : null,
         ))
           if (ctx.rec.passes(h.idx, ctl)) h.idx,
-      ].take(limit).toList();
+      ];
     }
+    final (idxs, hidden) = _dropSeen(pool, limit, exclude);
     return ToolOutcome(
       {
         'results': [for (final i in idxs) compact(i)],
         if (_applied(ctl).isNotEmpty) 'filters_applied': _applied(ctl),
-        if (idxs.isEmpty) ..._emptyNote(ctl),
+        if (hidden > 0) 'hidden_seen_count': hidden,
+        if (hidden > 0)
+          'note_seen':
+              '$hidden matching title(s) were left out because the user already watched, skipped or ignored them. '
+              'If they asked about a specific title or want things they have seen, call again with exclude_seen=false (or use check_library).',
+        if (idxs.isEmpty && hidden == 0) ..._emptyNote(ctl),
       },
       ids: {for (final i in idxs) ctx.data.titles[i].id},
     );
@@ -584,11 +765,41 @@ class AssistantTools {
           'note':
               'Library access is off, so these are quality picks, not personalised. The user can enable it in Settings → AI assistant.',
         if (_applied(ctl).isNotEmpty) 'filters_applied': _applied(ctl),
+        if (allowed) ..._excludedCounts(),
         'recommendations': [for (final r in recs) compact(r.idx, rec: r)],
         if (recs.isEmpty) ..._emptyNote(ctl),
       },
       ids: {for (final r in recs) ctx.data.titles[r.idx].id},
     );
+  }
+
+  /// How many catalog titles the recommender leaves out because they are already in the library.
+  Map<String, dynamic> _excludedCounts() {
+    var w = 0, n = 0, g = 0, p = 0;
+    for (final e in ctx.entries()) {
+      if (ctx.data.idToIdx[e.id] == null) continue;
+      switch (e.status) {
+        case EntryStatus.watched:
+          w++;
+        case EntryStatus.notInterested:
+          n++;
+        case EntryStatus.ignored:
+          g++;
+        case EntryStatus.planned:
+          p++;
+      }
+    }
+    return {
+      'hidden_seen_count': w + n + g,
+      'left_out_because_in_library': {
+        'watched': w,
+        'not_interested': n,
+        'ignored': g,
+        'planned': p,
+      },
+      'note_seen':
+          'These picks never include titles the user already watched, skipped or ignored.',
+    };
   }
 
   ToolOutcome _similar(Map<String, dynamic> a) {
@@ -603,7 +814,17 @@ class AssistantTools {
       scored.add((i, d.cosine(idx, i)));
     }
     scored.sort((x, y) => y.$2.compareTo(x.$2));
-    final top = scored.take(n).toList();
+    final exclude = _excludeSeen(a);
+    var hidden = 0;
+    final top = <(int, double)>[];
+    for (final e in scored) {
+      if (top.length >= n) break;
+      if (exclude && _isSeen(e.$1)) {
+        hidden++;
+        continue;
+      }
+      top.add(e);
+    }
     return ToolOutcome(
       {
         'similar_to': d.titles[idx].display,
@@ -611,7 +832,8 @@ class AssistantTools {
           for (final (i, s) in top)
             {...compact(i), 'similarity': double.parse(s.toStringAsFixed(2))},
         ],
-        if (top.isEmpty) ..._emptyNote(ctl),
+        if (hidden > 0) 'hidden_seen_count': hidden,
+        if (top.isEmpty && hidden == 0) ..._emptyNote(ctl),
       },
       ids: {d.titles[idx].id, for (final (i, _) in top) d.titles[i].id},
     );
@@ -631,6 +853,7 @@ class AssistantTools {
           'in_library': true,
           'status': e.status.name,
           'rating': e.rating,
+          ..._libraryFields(idx),
         },
         ids: {t.id},
       );
@@ -644,6 +867,7 @@ class AssistantTools {
     return ToolOutcome(
       {
         'title': t.display,
+        ..._libraryFields(idx),
         'match_percent': r.match.round(),
         'why': r.why,
         if (r.gem) 'hidden_gem': true,
@@ -731,6 +955,90 @@ class AssistantTools {
         'recently_watched': rows(recent, 8),
       }..removeWhere((k, v) => v == null),
       ids: ids,
+    );
+  }
+
+  /// "Did I watch X?" — resolves free-text titles (or ids) the way the app's own search does.
+  ToolOutcome _checkLibrary(Map<String, dynamic> a) {
+    if (!ctx.libraryAllowed()) return const ToolOutcome(_refusal);
+    final rows = <Map<String, dynamic>>[];
+    final ids = <int>{};
+    void add(String query, int? idx) {
+      if (idx == null) {
+        rows.add({'query': query, 'match': 'not found in the catalog'});
+        return;
+      }
+      final t = ctx.data.titles[idx];
+      ids.add(t.id);
+      rows.add({'query': query, ...compact(idx, pitch: false)});
+    }
+
+    for (final t in ((a['titles'] as List?) ?? const []).take(20)) {
+      final q = '$t'.trim();
+      if (q.isEmpty) continue;
+      add(q, ctx.search.bestMatch(q));
+    }
+    for (final i in ((a['ids'] as List?) ?? const []).take(20)) {
+      final n = i is num ? i.toInt() : int.tryParse('$i');
+      add('id ${n ?? i}', n == null ? null : ctx.data.idToIdx[n]);
+    }
+    if (rows.isEmpty)
+      return const ToolOutcome({
+        'error': 'invalid_arguments',
+        'message': 'Give "titles" (free text) and/or "ids".',
+      });
+    return ToolOutcome({'results': rows}, ids: ids);
+  }
+
+  static const _pageCap = 30;
+
+  /// Walks the user's library in pages.
+  ToolOutcome _listLibrary(Map<String, dynamic> a) {
+    if (!ctx.libraryAllowed()) return const ToolOutcome(_refusal);
+    final d = ctx.data;
+    final status = switch ('${a['status'] ?? ''}') {
+      'watched' => EntryStatus.watched,
+      'planned' => EntryStatus.planned,
+      'not_interested' => EntryStatus.notInterested,
+      'ignored' => EntryStatus.ignored,
+      _ => null,
+    };
+    final kind = a['kind'] is String ? a['kind'] as String : null;
+    final all = [
+      for (final e in ctx.entries())
+        if (d.idToIdx[e.id] != null &&
+            (status == null || e.status == status) &&
+            (kind == null || d.titles[d.idToIdx[e.id]!].kind == kind))
+          e,
+    ];
+    final sort = '${a['sort'] ?? 'recent'}';
+    all.sort(
+      (x, y) => switch (sort) {
+        'rating' => (y.rating ?? -1).compareTo(x.rating ?? -1),
+        'title' => d.titles[d.idToIdx[x.id]!].display.toLowerCase().compareTo(
+          d.titles[d.idToIdx[y.id]!].display.toLowerCase(),
+        ),
+        _ => y.updatedAt.compareTo(x.updatedAt),
+      },
+    );
+    final limit = _n(a['limit'], 15, _pageCap);
+    final offset = a['offset'] is num
+        ? (a['offset'] as num).toInt().clamp(0, all.length)
+        : 0;
+    final page = all.skip(offset).take(limit).toList();
+    return ToolOutcome(
+      {
+        'total': all.length,
+        'offset': offset,
+        'returned': page.length,
+        'has_more': offset + page.length < all.length,
+        if (offset + page.length < all.length)
+          'next_offset': offset + page.length,
+        'items': [
+          for (final e in page) compact(d.idToIdx[e.id]!, pitch: false),
+        ],
+      },
+      ids: {for (final e in page) e.id},
     );
   }
 

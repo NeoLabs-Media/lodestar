@@ -614,7 +614,9 @@ void main() {
           // and the system prompt tells the model which mode it is in
           expect(
             (r.bodies[0]['messages'] as List).first['content'],
-            contains(allowed ? 'allowed you to read' : 'NOT allowed'),
+            contains(
+              allowed ? 'Library access is ON' : 'Library access is OFF',
+            ),
           );
         }
       },
