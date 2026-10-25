@@ -401,6 +401,27 @@ class _SettingsPageState extends State<SettingsPage> {
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
                 child: Column(
                   children: [
+                    _card('Not for me', Icons.thumb_down_outlined, [
+                      const Text(
+                        'When you press “Not for me”, ask what put you off so only those parts get pushed down.',
+                        style: TextStyle(height: 1.35),
+                      ),
+                      const SizedBox(height: 10),
+                      SegmentedButton<String>(
+                        key: const ValueKey('ask-why'),
+                        showSelectedIcon: false,
+                        segments: const [
+                          ButtonSegment(value: 'sheet', label: Text('Ask')),
+                          ButtonSegment(
+                            value: 'snackbar',
+                            label: Text('Offer after'),
+                          ),
+                          ButtonSegment(value: 'never', label: Text('Never')),
+                        ],
+                        selected: {app.askWhyMode},
+                        onSelectionChanged: (v) => app.setAskWhyMode(v.first),
+                      ),
+                    ]),
                     _card('Your data', Icons.save_alt, [
                       Text(
                         '${app.entries.length} entries (ratings, reasons, plan/skip/ignore lists). Everything is stored on this device; '

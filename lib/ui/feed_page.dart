@@ -7,6 +7,7 @@ import '../engine/recommender.dart';
 import 'detail_page.dart';
 import 'filter_panel.dart';
 import 'rating_sheet.dart';
+import 'not_for_me.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -491,8 +492,8 @@ class HeroCard extends StatelessWidget {
         ),
         TextButton(
           onPressed: () {
-            app.setStatus(rec.idx, EntryStatus.notInterested);
             done();
+            notForMe(context, rec.idx);
           },
           child: const Text('Not for me', style: TextStyle(color: Atlas.muted)),
         ),
@@ -781,10 +782,7 @@ class PosterCard extends StatelessWidget {
                   'Plan',
                   () => app.setStatus(rec.idx, EntryStatus.planned),
                 ),
-                _TextAct(
-                  'Pass',
-                  () => app.setStatus(rec.idx, EntryStatus.notInterested),
-                ),
+                _TextAct('Pass', () => notForMe(context, rec.idx)),
                 _TextAct(
                   'Ignore',
                   () => app.setStatus(rec.idx, EntryStatus.ignored),

@@ -111,7 +111,7 @@ class AppState extends ChangeNotifier {
       case 'watched':
         rate(a.idx, rating: a.rating);
       default:
-        setStatus(a.idx, EntryStatus.notInterested);
+        skip(a.idx, reasons: a.reasons);
     }
   }
 
@@ -615,6 +615,36 @@ class AppState extends ChangeNotifier {
     _changed();
   }
 
+  /// "Ask why when I press Not for me": sheet (default) | snackbar | never.
+  String get askWhyMode {
+    final v = users.setting('ask_why');
+    return const {'sheet', 'snackbar', 'never'}.contains(v) ? v! : 'sheet';
+  }
+
+  void setAskWhyMode(String v) {
+    users.setSetting('ask_why', v);
+    notifyListeners();
+  }
+
+  /// Marks a title "not for me". With [reasons] (`n:aspect`, `x:kind|value`, `h:content_warnings|value`) the
+  /// ranking pushes down exactly those parts instead of the whole title. Also edits an existing skip.
+  void skip(int idx, {Set<String> reasons = const {}, String note = ''}) {
+    final e = UserEntry(
+      id: data.titles[idx].id,
+      key: data.titles[idx].key,
+      status: EntryStatus.notInterested,
+      reasons: {
+        for (final r in reasons)
+          if (r.startsWith('n:') || r.startsWith('x:') || r.startsWith('h:')) r,
+      },
+      note: note.trim(),
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    entries[idx] = e;
+    users.put(e);
+    _changed();
+  }
+
   void remove(int idx) {
     entries.remove(idx);
     users.remove(data.titles[idx].id);
@@ -701,6 +731,13 @@ class AppState extends ChangeNotifier {
     await Future<void>.delayed(
       const Duration(milliseconds: 16),
     ); // let the UI paint first
+    recommender.alwaysHideWarnings = {
+      for (final e in entries.values)
+        if (e.status == EntryStatus.notInterested)
+          for (final r in e.reasons)
+            if (r.startsWith('h:content_warnings|'))
+              r.substring('h:content_warnings|'.length),
+    };
     model = recommender.fit([for (final e in entries.values) e]);
     final result = recommender.recommend(model!, controls, count: 60);
     if (seq != _seq) return;

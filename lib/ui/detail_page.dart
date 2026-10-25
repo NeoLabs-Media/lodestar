@@ -8,6 +8,7 @@ import '../engine/catalog_data.dart';
 import '../engine/labels.dart';
 import '../engine/recommender.dart';
 import 'rating_sheet.dart';
+import 'not_for_me.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -446,8 +447,12 @@ class _DetailPageState extends State<DetailPage> {
               IconButton.filledTonal(
                 tooltip: 'Not interested',
                 onPressed: () {
-                  app.setStatus(widget.idx, EntryStatus.notInterested);
-                  Navigator.pop(context);
+                  final nav = Navigator.of(context);
+                  notForMe(context, widget.idx).then((_) {
+                    if (app.entries[widget.idx]?.status ==
+                        EntryStatus.notInterested)
+                      nav.maybePop();
+                  });
                 },
                 icon: const Icon(Icons.thumb_down_outlined),
               ),

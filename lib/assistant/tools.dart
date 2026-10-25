@@ -40,14 +40,42 @@ class PendingAction {
   final int idx;
   final double? rating;
   final String title;
-  const PendingAction(this.type, this.idx, this.title, {this.rating});
+  final Set<String>
+  reasons; // skip only: n:aspect / x:kind|value, validated against the title
+  final bool
+  asked; // the user already answered "what put you off?" for this action
+  const PendingAction(
+    this.type,
+    this.idx,
+    this.title, {
+    this.rating,
+    this.reasons = const {},
+    this.asked = false,
+  });
+
+  PendingAction withReasons(Set<String> r) =>
+      PendingAction(type, idx, title, rating: rating, reasons: r, asked: true);
 
   String get label => switch (type) {
     'plan' => 'Add “$title” to your plan-to-watch list',
     'watched' =>
       'Mark “$title” as watched${rating == null ? '' : ' with a ${rating == rating!.roundToDouble() ? rating!.toInt() : rating}/10'}',
-    _ => 'Mark “$title” as not interested',
+    _ =>
+      'Mark “$title” as not interested${reasons.isEmpty ? '' : ' (because: ${_reasonText(reasons)})'}',
   };
+}
+
+String _reasonText(Set<String> reasons) => [
+  for (final r in reasons)
+    if (r.startsWith('n:'))
+      genericReasonByKey(r.substring(2))?.label.toLowerCase() ?? r.substring(2)
+    else if (r.startsWith('x:'))
+      _kv(r.substring(2)),
+].join(', ');
+
+String _kv(String kindValue) {
+  final p = kindValue.split('|');
+  return (p.length == 2 ? facetChipLabel(p[0], p[1]) : kindValue).toLowerCase();
 }
 
 class ToolOutcome {
@@ -220,8 +248,19 @@ class AssistantTools {
     ),
     ToolSpec(
       'not_interested',
-      'Ask to mark a title as not interested. The user must confirm in the UI.',
-      _obj({'id': _idProp}, ['id']),
+      'Ask to mark a title as not interested. The user must confirm in the UI. Optionally say what puts them off '
+          '(only if they told you): tags of that title such as "slow-burn romance", or aspects like pacing, fanservice, violence / gore.',
+      _obj(
+        {
+          'id': _idProp,
+          'reasons': {
+            'type': 'array',
+            'items': {'type': 'string'},
+            'description': 'what the user dislikes about this title',
+          },
+        },
+        ['id'],
+      ),
     ),
   ];
 
@@ -696,6 +735,34 @@ class AssistantTools {
   }
 
   // ------------------------------------------------------------------ state-changing (confirmation required)
+  /// Keeps only reasons that really are one of this title's tags or a known aspect.
+  (Set<String>, {List<String> dropped}) _skipReasons(
+    int idx,
+    List<String> wanted,
+  ) {
+    final byName = <String, String>{};
+    for (final (fid, w) in ctx.data.facetsOf(idx)) {
+      final f = ctx.data.vocab[fid];
+      if (w < 3) continue;
+      final key = 'x:${f.kind}|${f.value}';
+      byName[f.value.toLowerCase()] = key;
+      byName[facetChipLabel(f.kind, f.value).toLowerCase()] = key;
+    }
+    for (final g in [...genericReasons, ...dislikeOnlyAspects]) {
+      byName[g.key] = 'n:${g.key}';
+      byName[g.label.toLowerCase()] = 'n:${g.key}';
+    }
+    byName['violence'] = 'n:gore';
+    byName['gore'] = 'n:gore';
+    final ok = <String>{};
+    final dropped = <String>[];
+    for (final w in wanted) {
+      final k = byName[w.trim().toLowerCase()];
+      k == null ? dropped.add(w) : ok.add(k);
+    }
+    return (ok, dropped: dropped);
+  }
+
   ToolOutcome _action(String type, Map<String, dynamic> a) {
     final idx = _idx(a);
     if (idx == null) return _notFound;
@@ -703,9 +770,27 @@ class AssistantTools {
     double? rating;
     if (type == 'watched' && a['rating'] is num)
       rating = ((a['rating'] as num).toDouble().clamp(1, 10) * 2).round() / 2;
-    final p = PendingAction(type, idx, t.display, rating: rating);
+    var reasons = <String>{};
+    final dropped = <String>[];
+    if (type == 'skip' && a['reasons'] is List) {
+      final r = _skipReasons(
+        idx,
+        (a['reasons'] as List).map((e) => '$e').toList(),
+      );
+      reasons = r.$1;
+      dropped.addAll(r.dropped);
+    }
+    final p = PendingAction(
+      type,
+      idx,
+      t.display,
+      rating: rating,
+      reasons: reasons,
+      asked: reasons.isNotEmpty,
+    );
     return ToolOutcome(
       {
+        if (dropped.isNotEmpty) 'ignored_reasons': dropped,
         'status': 'awaiting_user_confirmation',
         'action': p.label,
         'message':

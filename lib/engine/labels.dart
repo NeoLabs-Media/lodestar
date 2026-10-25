@@ -227,7 +227,23 @@ const genericReasons = <GenericReason>[
   ),
 ];
 
+/// Aspects people dislike but rarely list as a reason to love something; offered only in "Not for me".
+const dislikeOnlyAspects = <GenericReason>[
+  GenericReason('fanservice', 'Fanservice', {
+    'fanservice': 1,
+    'sexual_content': .5,
+  }),
+  GenericReason('gore', 'Violence / gore', {
+    'violence_gore': 1,
+    'horror_dread': .4,
+  }),
+  GenericReason('length', 'Too long', {'commitment': 1, 'serialization': .4}),
+];
+
 GenericReason? genericReasonByKey(String key) {
+  for (final g in dislikeOnlyAspects) {
+    if (g.key == key) return g;
+  }
   for (final g in genericReasons) {
     if (g.key == key) return g;
   }

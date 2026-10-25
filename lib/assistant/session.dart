@@ -120,10 +120,11 @@ class AssistantSession extends ChangeNotifier {
     notifyListeners();
   }
 
-  void confirm(PendingAction a) {
+  void confirm(PendingAction a, {Set<String>? reasons}) {
     if (!pending.remove(a)) return;
-    runAction(a);
-    messages.add(UiMessage('info', 'Done: ${a.label}.'));
+    final run = reasons == null ? a : a.withReasons(reasons);
+    runAction(run);
+    messages.add(UiMessage('info', 'Done: ${run.label}.'));
     notifyListeners();
   }
 

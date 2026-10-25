@@ -12,6 +12,7 @@ import '../engine/search.dart';
 import '../platform/web_bridge.dart';
 import 'crunchyroll_page.dart';
 import 'detail_page.dart';
+import 'not_for_me.dart';
 import 'rating_tour.dart';
 import 'rating_sheet.dart';
 import 'widgets.dart';
@@ -264,7 +265,11 @@ class _LibraryPageState extends State<LibraryPage> {
                       overflow: TextOverflow.ellipsis,
                     ),
                     subtitle: Text(
-                      e.reasons.isEmpty
+                      e.status == EntryStatus.notInterested
+                          ? (skipReasonText(e.reasons).isEmpty
+                                ? '${metaLine(t)} · tap to say why'
+                                : 'Because: ${skipReasonText(e.reasons)}')
+                          : e.reasons.isEmpty
                           ? metaLine(t)
                           : '${metaLine(t)} · ${e.reasons.length} reason${e.reasons.length == 1 ? '' : 's'}',
                       maxLines: 1,
@@ -333,6 +338,8 @@ class _LibraryPageState extends State<LibraryPage> {
                     ),
                     onTap: () => e.status == EntryStatus.watched
                         ? showRatingSheet(context, idx)
+                        : e.status == EntryStatus.notInterested
+                        ? editSkipReasons(context, idx)
                         : Navigator.of(context).push(
                             MaterialPageRoute(
                               builder: (_) => DetailPage(idx: idx),

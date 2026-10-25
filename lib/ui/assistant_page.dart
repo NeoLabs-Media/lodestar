@@ -6,6 +6,7 @@ import '../assistant/session.dart';
 import '../assistant/tools.dart';
 import 'detail_page.dart';
 import 'filter_panel.dart';
+import 'not_for_me.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -513,7 +514,15 @@ class _ConfirmCard extends StatelessWidget {
             child: const Text('Not now'),
           ),
           FilledButton(
-            onPressed: () => s.confirm(a),
+            onPressed: () async {
+              final app = context.read<AppState>();
+              if (a.type == 'skip' && !a.asked && app.askWhyMode == 'sheet') {
+                final r = await showNotForMeSheet(context, a.idx);
+                if (r != null) s.confirm(a, reasons: r.reasons);
+              } else {
+                s.confirm(a);
+              }
+            },
             child: const Text('Confirm'),
           ),
         ],

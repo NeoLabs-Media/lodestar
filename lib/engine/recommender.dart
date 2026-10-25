@@ -297,7 +297,11 @@ class Recommender {
             ? 0.35
             : ((u.rating! - mean) / 2.0).clamp(-2.0, 2.0);
       } else if (u.status == EntryStatus.notInterested) {
-        signal[e.key] = -0.8;
+        // told us which parts put them off -> mostly those parts, not the whole title
+        final specific = u.reasons.any(
+          (r) => r.startsWith('n:') || r.startsWith('x:'),
+        );
+        signal[e.key] = specific ? -0.3 : -0.8;
       }
     }
     final positives = [
@@ -439,10 +443,15 @@ class Recommender {
     var nReasons = 0;
     for (final e in byIdx.entries) {
       final u = e.value;
-      if (u.status != EntryStatus.watched || u.reasons.isEmpty) continue;
+      if (u.reasons.isEmpty) continue;
+      if (u.status != EntryStatus.watched &&
+          u.status != EntryStatus.notInterested)
+        continue;
+      final skipped = u.status == EntryStatus.notInterested;
       final s = signal[e.key] ?? 0.35;
       final strength = s > 0 ? math.min(1.5, math.max(0.5, s)) : 0.3;
       for (final r in u.reasons) {
+        if (skipped && !r.startsWith('n:') && !r.startsWith('x:')) continue;
         nReasons++;
         if (r.startsWith('g:')) {
           final g = genericReasonByKey(r.substring(2));
@@ -640,7 +649,11 @@ class Recommender {
     return ci >= 0 && (_catMask[idx] & (1 << ci)) != 0;
   }
 
+  /// Content warnings the user chose to "always hide" (from Not-for-me reasons); set by the app.
+  Set<String> alwaysHideWarnings = {};
+
   bool _passes(int i, Controls ctl) {
+    if (alwaysHideWarnings.isNotEmpty && _hiddenByWarning(i)) return false;
     if (ctl.also != null && !_passes(i, ctl.also!)) return false;
     final t = c.titles[i];
     if (ctl.kinds.isNotEmpty && !ctl.kinds.contains(t.kind)) return false;
@@ -665,6 +678,17 @@ class Recommender {
       if (!moodOk) return false;
     }
     return true;
+  }
+
+  bool _hiddenByWarning(int i) {
+    for (final (fid, w) in c.facetsOf(i)) {
+      final fd = c.vocab[fid];
+      if (fd.kind == 'content_warnings' &&
+          w >= 3 &&
+          alwaysHideWarnings.contains(fd.value))
+        return true;
+    }
+    return false;
   }
 
   /// Does title [idx] satisfy the hard filters of [ctl]?
@@ -1131,6 +1155,8 @@ class Recommender {
     final xCounts = <String, int>{}, nCounts = <String>{};
     for (final e in m.byIdx.values) {
       for (final r in e.reasons) {
+        if (r.startsWith('h:'))
+          continue; // hard "always hide" rule, not a taste signal
         if (r.startsWith('x:')) {
           xCounts[r.substring(2)] = (xCounts[r.substring(2)] ?? 0) + 1;
           continue;
