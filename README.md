@@ -6,7 +6,7 @@
 
 [**Open the web app →**](https://neolabs-media.github.io/lodestar/) · macOS · iOS · Web
 
-<sub>Anime today. Movies and series next.</sub>
+<sub>Anime, movies and series.</sub>
 
 </div>
 
@@ -34,7 +34,7 @@ Every title carries a hand-built *deep profile*, not just tags:
 
 - **45 scored dimensions** (slow-burn, tragedy, moral ambiguity, pacing…) plus ~900 themes, moods and archetypes
 - **Characters, relationships, spoiler-free pitch, ending type** and a 384-d text embedding
-- **8,500+ titles shipped today**, 15,000+ profiled and counting
+- **31,000+ titles shipped today**: ~15.8k anime, ~12.6k movies and ~3k TV series, each with its own deep profile
 
 > **The flex:** profiling the catalog took ~**480 million tokens**. At premium API rates that's a small-car invoice, call it **$15k and then some**. We ran it on our own hardware instead. No neural network was harmed in the making of this recommender: it's embeddings, ridge regression and a diversity re-rank, all running locally.
 
@@ -57,9 +57,10 @@ flutter build web --release --pwa-strategy=none --base-href /lodestar/
 Replace [`catalog.db`](catalog.db) in the repo root and push to `main`. CI checks that the file is valid
 (schema, titles, vocabulary), then rebuilds and redeploys the site. A bad file stops the deploy.
 
-Prefer a small push? Drop a `catalog_delta.db` (only new/changed titles, built with `tools/export.py --base catalog.db`)
-next to it: CI merges it into `catalog.db` for the build (`tools/apply_delta.py`). Fold it in whenever you like.
-The catalog holds anime today and is ready for movies and series (kind filter, TMDB-based links).
+Prefer a small push, or a catalog above GitHub's 100 MB file limit? Drop `catalog_delta*.db` files (only new/changed titles,
+built with `tools/export.py --base catalog.db`) next to it: CI merges them into `catalog.db` in name order for the build
+(`tools/apply_delta.py`). Fold them in whenever you like. The current catalog is the base plus two deltas (the second adds
+all movies and series). Movies and series are filtered by kind; the data is built by the separate lodestar-pipeline.
 
 ## Under the hood
 
