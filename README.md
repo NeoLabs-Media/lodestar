@@ -52,18 +52,4 @@ Web build (what the GitHub Pages workflow runs):
 flutter build web --release --pwa-strategy=none --base-href /lodestar/
 ```
 
-## Update the catalog
-
-Replace [`catalog.db`](catalog.db) in the repo root and push to `main`. CI checks that the file is valid
-(schema, titles, vocabulary), then rebuilds and redeploys the site. A bad file stops the deploy.
-
-Prefer a small push, or a catalog above GitHub's 100 MB file limit? Drop `catalog_delta*.db` files (only new/changed titles,
-built with `tools/export.py --base catalog.db`) next to it: CI merges them into `catalog.db` in name order for the build
-(`tools/apply_delta.py`). Fold them in whenever you like. The current catalog is the base plus two deltas (the second adds
-all movies and series). Movies and series are filtered by kind; the data is built by the separate lodestar-pipeline.
-
-## Under the hood
-
-`lib/engine` is pure Dart and holds the whole recommender: taste vector, ridge model, hidden-gem term, MMR re-rank and the "why" text. `tools/export.py` builds the bundled `catalog.db` from a source profile database.
-
 <sub>Metadata courtesy of AniList, Kitsu and Wikipedia; covers load from their original hosts.</sub>
