@@ -27,9 +27,9 @@ jobs:
       - run: flutter pub get
       - name: Apply catalog delta (optional)
         run: |
-          # A small catalog_delta.db at the repo root is merged into catalog.db for this build only
+          # catalog_delta*.db files at the repo root are merged, in name order, into catalog.db for this build only
           # (idempotent; see tools/apply_delta.py). Fold it into catalog.db and delete it whenever convenient.
-          if [ -f catalog_delta.db ]; then python3 tools/apply_delta.py catalog.db catalog_delta.db; fi
+          for d in $(ls catalog_delta*.db 2>/dev/null | sort); do python3 tools/apply_delta.py catalog.db "$d"; done
       - name: Validate catalog
         run: |
           python3 - <<'PY'
