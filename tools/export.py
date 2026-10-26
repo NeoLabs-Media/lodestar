@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Build the bundled catalog asset (catalog.db, schema 2) -- or a small catalog_delta.db -- from the
-slim server snapshot (anime today; movies/TV rows carry media_type/tmdb/imdb/cover).
+slim server snapshot (anime, movies and TV; movie/TV rows carry media_type/tmdb/imdb/cover).
 
   1. merge cache/slim_new.db (output of fetch_snapshot.sh) into cache/slim.db   (incremental)
   2. embed embedding_text with BAAI/bge-small-en-v1.5 (fastembed/ONNX, CPU); cached by text hash
