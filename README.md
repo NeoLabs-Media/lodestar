@@ -34,9 +34,9 @@ Every title carries a hand-built *deep profile*, not just tags:
 
 - **45 scored dimensions** (slow-burn, tragedy, moral ambiguity, pacing…) plus ~900 themes, moods and archetypes
 - **Characters, relationships, spoiler-free pitch, ending type** and a 384-d text embedding
-- **31,000+ titles shipped today**: ~15.8k anime, ~12.6k movies and ~3k TV series, every one with its own full profile (the 4,400 most popular anime get the extended 7-pass analysis)
+- **31,000+ titles shipped today**: ~15.8k anime, ~12.6k movies and ~3k TV series, every one with its own full profile
 
-> **The flex:** profiling the catalog took ~**840 million tokens**. At premium API rates that's a small-car invoice, call it **$15k and then some**. We ran it on our own hardware instead. No neural network was harmed in the making of this recommender: it's embeddings, ridge regression and a diversity re-rank, all running locally.
+> **The flex:** profiling the catalog took ~**900 million tokens**. At premium API rates that's a small-car invoice, call it **$15k and then some**. We ran it on our own hardware instead.
 
 ## Run it
 
