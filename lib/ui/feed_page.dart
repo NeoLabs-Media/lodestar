@@ -338,7 +338,9 @@ class _CategoryStrip extends StatelessWidget {
             ),
           ),
           for (final cat in categories.where(
-            (k) => app.recommender.categoryCount(k.key, c.kinds) > 0,
+            (k) =>
+                categoryVisible(k, c.kinds, app.data.kinds) &&
+                app.recommender.categoryCount(k.key, c.kinds) > 0,
           ))
             Padding(
               padding: const EdgeInsets.only(right: 8),

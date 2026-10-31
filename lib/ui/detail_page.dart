@@ -62,7 +62,10 @@ class _DetailPageState extends State<DetailPage> {
                 ),
               const SizedBox(height: 6),
               Text(
-                metaLine(t) + (d['dur'] != null ? ' · ${d['dur']} min' : ''),
+                metaLine(t) +
+                    (d['dur'] != null && t.kind == 'anime'
+                        ? ' · ${d['dur']} min'
+                        : ''),
                 style: TextStyle(color: cs.onSurfaceVariant),
               ),
               const SizedBox(height: 8),

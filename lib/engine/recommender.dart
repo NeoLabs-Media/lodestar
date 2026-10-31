@@ -604,28 +604,28 @@ class Recommender {
 
   /// Per-title bitmask of the categories in categories.dart.
   late final Int32List _catMask = () {
-    final rules = <int, List<(int, double)>>{}; // category index -> (fid, minW)
+    // fid -> (category bit, minimum weight): one lookup per facet instead of scanning every rule
+    final byFid = <int, List<(int, double)>>{};
     for (var k = 0; k < categories.length; k++) {
-      rules[k] = [
-        for (final (kind, value, w) in categories[k].any)
-          // movie/TV catalogs carry TMDB keywords where anime carry AniList tags
-          for (final kk
-              in (kind == 'anilist_tag' ? ['anilist_tag', 'keyword'] : [kind]))
-            if (c.facetIndex['$kk|$value'] != null)
-              (c.facetIndex['$kk|$value']!, w),
-      ];
+      for (final (kind, value, w) in categories[k].any) {
+        // movie/TV catalogs carry TMDB keywords where anime carry AniList tags
+        for (final kk
+            in (kind == 'anilist_tag' ? ['anilist_tag', 'keyword'] : [kind])) {
+          final fid = c.facetIndex['$kk|$value'];
+          if (fid != null) (byFid[fid] ??= []).add((k, w));
+        }
+      }
     }
     final out = Int32List(c.n);
     for (var i = 0; i < c.n; i++) {
       var mask = 0;
       for (var k = c.facetOff[i]; k < c.facetOff[i + 1]; k++) {
-        final fid = c.facetIds[k];
+        final rules = byFid[c.facetIds[k]];
+        if (rules == null) continue;
         final w = c.facetW[k] / 25.0;
-        rules.forEach((ci, list) {
-          for (final (f, mw) in list) {
-            if (f == fid && w >= mw) mask |= 1 << ci;
-          }
-        });
+        for (final (ci, mw) in rules) {
+          if (w >= mw) mask |= 1 << ci;
+        }
       }
       out[i] = mask;
     }
@@ -850,7 +850,11 @@ class Recommender {
   }) {
     final scored = _rank(m, ctl);
     final pool = scored.take(300).toList();
-    final chosen = diversify ? _mmr(pool, m, count) : pool.take(count).toList();
+    // a mixed catalog browsed as "all media": do not let one type crowd out the others
+    final balance = c.kinds.length > 1 && ctl.kinds.length != 1;
+    final chosen = diversify
+        ? _mmr(pool, m, count, balance: balance)
+        : pool.take(count).toList();
     final use = <int, int>{};
     final note = ctl.describe();
     return [
@@ -942,11 +946,19 @@ class Recommender {
     return out;
   }
 
-  List<_Cand> _mmr(List<_Cand> pool, TasteModel m, int count) {
+  List<_Cand> _mmr(
+    List<_Cand> pool,
+    TasteModel m,
+    int count, {
+    bool balance = false,
+  }) {
     final chosen = <_Cand>[];
     final rest = List<_Cand>.from(pool);
     final maxSim = List<double>.filled(rest.length, 0, growable: true);
     final franchiseCount = <int, int>{};
+    final kindCount = <String, int>{};
+    // without a taste signal the types are mixed evenly; with one the taste leads and the balance only nudges
+    final kindCoef = m.hasSignal ? 0.6 : 3.0;
     while (chosen.length < count && rest.isNotEmpty) {
       var best = -1;
       var bestV = -1e9;
@@ -956,6 +968,12 @@ class Recommender {
         v -= 7.0 * math.max(0.0, maxSim[k] - 0.55);
         final fc = franchiseCount[c.franchise[cand.idx]] ?? 0;
         if (fc >= 1) v -= 2.5 * fc;
+        if (balance) {
+          v -=
+              kindCoef *
+              (kindCount[c.titles[cand.idx].kind] ?? 0) /
+              (chosen.length + 1);
+        }
         if (v > bestV) {
           bestV = v;
           best = k;
@@ -964,6 +982,8 @@ class Recommender {
       final pick = rest.removeAt(best);
       maxSim.removeAt(best);
       chosen.add(pick);
+      kindCount[c.titles[pick.idx].kind] =
+          (kindCount[c.titles[pick.idx].kind] ?? 0) + 1;
       franchiseCount[c.franchise[pick.idx]] =
           (franchiseCount[c.franchise[pick.idx]] ?? 0) + 1;
       for (var k = 0; k < rest.length; k++) {

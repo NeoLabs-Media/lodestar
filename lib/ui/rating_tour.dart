@@ -211,7 +211,7 @@ class _RatingTourPageState extends State<RatingTourPage> {
         if (specific.isNotEmpty) ...[
           const SizedBox(height: 12),
           Text(
-            'Specific to this show',
+            'Specific to this title',
             style: tt.labelLarge?.copyWith(color: cs.primary),
           ),
           const SizedBox(height: 8),

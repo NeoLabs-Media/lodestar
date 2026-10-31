@@ -73,7 +73,7 @@ class _LibraryPageState extends State<LibraryPage> {
               onPressed: () => _pasteDialog(context),
             ),
             IconButton(
-              tooltip: 'Import Crunchyroll / MyAnimeList export',
+              tooltip: 'Import a file (Letterboxd, IMDb, MyAnimeList, …)',
               icon: const Icon(Icons.upload_file),
               onPressed: () => _importDialog(context),
             ),
@@ -84,8 +84,7 @@ class _LibraryPageState extends State<LibraryPage> {
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
             child: SearchBar(
               controller: _ctl,
-              hintText:
-                  'Search any title to add it (romaji, English, synonyms)…',
+              hintText: 'Search any movie, series or anime to add it…',
               leading: const Icon(Icons.search),
               trailing: [
                 if (_ctl.text.isNotEmpty)
@@ -226,7 +225,7 @@ class _LibraryPageState extends State<LibraryPage> {
                           label: Text(
                             kIsWeb
                                 ? 'Import from a file'
-                                : 'Import from Crunchyroll or a file',
+                                : 'Import from a file or Crunchyroll',
                           ),
                         ),
                       ],
@@ -459,7 +458,7 @@ class _LibraryPageState extends State<LibraryPage> {
             onPressed: () => Navigator.pop(context, 'cr'),
             child: ListTile(
               leading: const Icon(Icons.play_circle_outline),
-              title: const Text('Connect Crunchyroll'),
+              title: const Text('Connect Crunchyroll (anime)'),
               subtitle: Text(
                 kIsWeb
                     ? 'One bookmark click while you are signed in to Crunchyroll'
@@ -473,7 +472,7 @@ class _LibraryPageState extends State<LibraryPage> {
               leading: Icon(Icons.upload_file),
               title: Text('From a file'),
               subtitle: Text(
-                'MyAnimeList / AniList / Kitsu export, CSV or a title list',
+                'Letterboxd / IMDb ratings CSV, MyAnimeList / AniList export, or a title list',
               ),
             ),
           ),

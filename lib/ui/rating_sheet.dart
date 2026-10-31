@@ -329,7 +329,7 @@ class _RatingPanelState extends State<RatingPanel> {
                   if (specific.isNotEmpty) ...[
                     const SizedBox(height: 14),
                     Text(
-                      'Specific to this show',
+                      'Specific to this title',
                       style: Theme.of(
                         context,
                       ).textTheme.labelLarge?.copyWith(color: cs.primary),

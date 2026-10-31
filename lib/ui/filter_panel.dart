@@ -175,7 +175,11 @@ class FilterPanel extends StatelessWidget {
             .map((e) => e.key)
             .toList();
     final cats = categories
-        .where((k) => app.recommender.categoryCount(k.key, kinds) > 0)
+        .where(
+          (k) =>
+              categoryVisible(k, kinds, d.kinds) &&
+              app.recommender.categoryCount(k.key, kinds) > 0,
+        )
         .toList();
 
     return SingleChildScrollView(

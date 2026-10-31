@@ -57,9 +57,19 @@ class Cover extends StatelessWidget {
 String metaLine(Show t) {
   final parts = <String>[];
   if (t.year != null) parts.add('${t.year}');
-  if (t.format != null) parts.add(formatLabel(t.format!));
-  if (t.episodes != null && t.episodes! > 0 && t.format != 'MOVIE') {
-    parts.add('${t.episodes} ep');
+  if (t.kind == 'movie') {
+    if (t.runtime != null && t.runtime! > 0) parts.add('${t.runtime} min');
+  } else if (t.kind == 'tv') {
+    if (t.seasons != null && t.seasons! > 0) {
+      parts.add('${t.seasons} season${t.seasons == 1 ? '' : 's'}');
+    } else if (t.episodes != null && t.episodes! > 0) {
+      parts.add('${t.episodes} ep');
+    }
+  } else {
+    if (t.format != null) parts.add(formatLabel(t.format!));
+    if (t.episodes != null && t.episodes! > 0 && t.format != 'MOVIE') {
+      parts.add('${t.episodes} ep');
+    }
   }
   return parts.join(' · ');
 }
@@ -194,7 +204,7 @@ class KindBadge extends StatelessWidget {
   }
 }
 
-const mediaKinds = ['anime', 'movie', 'tv'];
+const mediaKinds = ['movie', 'tv', 'anime'];
 const _kindPlural = {'anime': 'Anime', 'movie': 'Movies', 'tv': 'TV'};
 
 /// Explains (instead of silently doing nothing) why a media type cannot be picked.

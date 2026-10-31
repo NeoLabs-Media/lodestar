@@ -53,6 +53,117 @@ ImportResult parsePastedList(String text, CatalogData c, TitleSearch search) {
   return res;
 }
 
+/// Minimal CSV reader (quoted fields, doubled quotes, commas and newlines inside quotes).
+List<List<String>> _csvRows(String text) {
+  final rows = <List<String>>[];
+  var row = <String>[];
+  final cell = StringBuffer();
+  var quoted = false;
+  for (var i = 0; i < text.length; i++) {
+    final ch = text[i];
+    if (quoted) {
+      if (ch == '"') {
+        if (i + 1 < text.length && text[i + 1] == '"') {
+          cell.write('"');
+          i++;
+        } else {
+          quoted = false;
+        }
+      } else {
+        cell.write(ch);
+      }
+    } else if (ch == '"') {
+      quoted = true;
+    } else if (ch == ',') {
+      row.add(cell.toString());
+      cell.clear();
+    } else if (ch == '\n' || ch == '\r') {
+      if (ch == '\r' && i + 1 < text.length && text[i + 1] == '\n') i++;
+      row.add(cell.toString());
+      cell.clear();
+      if (row.any((c) => c.isNotEmpty)) rows.add(row);
+      row = <String>[];
+    } else {
+      cell.write(ch);
+    }
+  }
+  row.add(cell.toString());
+  if (row.any((c) => c.isNotEmpty)) rows.add(row);
+  return rows;
+}
+
+/// Ratings exports of Letterboxd (`Name,Year,Rating`, 0.5-5 stars), IMDb (`Const,Your Rating,Title,Year,Title Type`,
+/// 1-10) and similar CSVs with a header row: matched by IMDb id when present, otherwise by title and year.
+/// Returns null when the text is not such a file.
+ImportResult? parseRatedCsv(String text, CatalogData c, TitleSearch search) {
+  final rows = _csvRows(text);
+  if (rows.length < 2) return null;
+  final head = [for (final h in rows.first) h.trim().toLowerCase()];
+  int col(List<String> names) => head.indexWhere(names.contains);
+  final iTitle = col(['name', 'title']);
+  final iYear = col(['year']);
+  final iRate = col(['your rating', 'my rating', 'rating']);
+  final iConst = col(['const', 'imdb id']);
+  final iType = col(['title type']);
+  if (iTitle < 0 || (iYear < 0 && iRate < 0 && iConst < 0)) return null;
+  final fiveStar = iRate >= 0 && head[iRate] == 'rating' && iConst < 0;
+  String at(List<String> r, int i) => i >= 0 && i < r.length ? r[i].trim() : '';
+  final byImdb = {
+    for (final t in c.titles)
+      if (t.imdb != null && t.imdb!.isNotEmpty) t.imdb!: t.idx,
+  };
+  final res = ImportResult();
+  final seen = <int>{};
+  for (final r in rows.skip(1)) {
+    final name = at(r, iTitle);
+    if (name.isEmpty) continue;
+    final year = int.tryParse(at(r, iYear));
+    var rating = double.tryParse(at(r, iRate).replaceAll(',', '.'));
+    if (rating != null && fiveStar) rating = rating * 2;
+    if (rating != null && (rating < 1 || rating > 10)) rating = null;
+    final type = at(r, iType).toLowerCase();
+    final kind = type.isEmpty
+        ? null
+        : (type.contains('series') ||
+                  type.contains('tv') && !type.contains('movie')
+              ? 'tv'
+              : (type.contains('movie') || type == 'video' ? 'movie' : null));
+    int? idx = byImdb[at(r, iConst)];
+    if (idx == null) {
+      final hits = [
+        for (final h in search.search(name, limit: 8, kind: kind))
+          if (h.raw >= 46) h,
+      ];
+      if (hits.isNotEmpty) {
+        SearchHit? pick;
+        if (year != null) {
+          for (final h in hits) {
+            final y = c.titles[h.idx].year;
+            if (y != null && (y - year).abs() <= 1) {
+              pick = h;
+              break;
+            }
+          }
+        }
+        pick ??= hits.first.raw >= 70 || year == null ? hits.first : null;
+        idx = pick?.idx;
+      }
+    }
+    if (idx == null) {
+      res.unmatched.add(year == null ? name : '$name ($year)');
+    } else if (seen.add(idx)) {
+      res.entries.add(
+        UserEntry(
+          id: c.titles[idx].id,
+          status: EntryStatus.watched,
+          rating: rating,
+        ),
+      );
+    }
+  }
+  return res.entries.isEmpty && res.unmatched.isEmpty ? null : res;
+}
+
 /// MyAnimeList export (XML or XML.gz).
 ImportResult parseMalXml(List<int> bytes, CatalogData c, TitleSearch search) {
   if (bytes.length > 2 && bytes[0] == 0x1f && bytes[1] == 0x8b) {
@@ -113,6 +224,10 @@ ImportResult parseAnyImport(
     bytes = GZipDecoder().decodeBytes(bytes);
   final text = utf8.decode(bytes, allowMalformed: true).trimLeft();
   if (text.startsWith('<')) return parseMalXml(bytes, c, search);
+  if (!text.startsWith('{') && !text.startsWith('[')) {
+    final csv = parseRatedCsv(text, c, search);
+    if (csv != null && csv.entries.isNotEmpty) return csv;
+  }
   final titles = <String>[];
   if (text.startsWith('{') || text.startsWith('[')) {
     try {

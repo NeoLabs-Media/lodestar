@@ -153,10 +153,10 @@ class _ChatState extends State<_Chat> {
   }
 
   static const examples = [
-    'Something like Monster but lighter',
-    'Hidden gems that fit my taste',
     'A movie for tonight, under 2 hours',
-    'Short anime I can finish this week',
+    'A series to binge this weekend',
+    'Hidden gems that fit my taste',
+    'Something like Breaking Bad but lighter',
   ];
 
   @override
