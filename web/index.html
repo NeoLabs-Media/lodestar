@@ -18,7 +18,7 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="Lodestar — personal watch recommendations for anime, movies and TV series, including hidden gems. Runs entirely in your browser; your ratings never leave your device.">
+  <meta name="description" content="Lodestar — personal watch recommendations for movies, series and anime, including hidden gems. Runs entirely in your browser; your ratings never leave your device.">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -32,11 +32,23 @@
   <title>Lodestar</title>
   <script>(function(){var h=location.hash;if(h.indexOf('#cr=')===0){window.__lodestarImport=h.slice(4);history.replaceState(null,'',location.pathname+location.search);}})();</script>
   <meta name="theme-color" content="#0D0D0C">
-  <style>html,body{margin:0;background:#0D0D0C}#splash{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#8F8A7E;font:500 13px/1.4 system-ui,sans-serif;letter-spacing:.04em}#splash b{color:#E3B65B;font-size:34px;font-weight:400}</style>
+  <style>
+    html,body{margin:0;background:#0D0D0C}
+    #splash{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:#8F8A7E;font:500 13px/1.4 system-ui,sans-serif;letter-spacing:.04em;transition:opacity .35s ease}
+    #splash b{color:#E3B65B;font-size:44px;font-weight:400;animation:pulse 2.2s ease-in-out infinite}
+    #splash h1{margin:0;font:400 28px Georgia,serif;color:#ECE7DC;letter-spacing:.01em}
+    #splash .bar{width:180px;height:2px;background:#26241f;overflow:hidden;margin-top:10px}
+    #splash .bar i{display:block;width:40%;height:100%;background:#E3B65B;animation:slide 1.3s ease-in-out infinite}
+    @keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(260%)}}
+    @keyframes pulse{0%,100%{opacity:.65}50%{opacity:1}}
+  </style>
+  <!-- start downloading the catalog while the app code is still loading -->
+  <link rel="preload" href="assets/catalog.db" as="fetch" crossorigin="anonymous">
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
-  <div id="splash"><b>&#10022;</b><span>Loading Lodestar &middot; first visit downloads the catalog (~47&nbsp;MB)</span></div>
+  <div id="splash"><b>&#10022;</b><h1>Lodestar</h1><div class="bar"><i></i></div><span>Loading &middot; the first visit downloads the catalog, later visits are fast</span></div>
+  <script>window.addEventListener("flutter-first-frame",function(){var s=document.getElementById("splash");if(!s)return;s.style.opacity=0;setTimeout(function(){s.remove()},400)});</script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

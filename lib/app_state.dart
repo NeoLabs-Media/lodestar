@@ -31,7 +31,22 @@ class AppState extends ChangeNotifier {
   late CatalogStore store;
   late CatalogData data;
   late Recommender recommender;
-  late TitleSearch search;
+  TitleSearch? _search;
+
+  /// Built on first use (indexing ~30k titles is not needed to show the first screen).
+  TitleSearch get search => _search ??= TitleSearch(data);
+
+  /// What the loading screen says while the catalog is being opened.
+  String loadStage = 'Starting…';
+
+  Future<void> _stage(String text) async {
+    loadStage = text;
+    notifyListeners();
+    await Future<void>.delayed(
+      const Duration(milliseconds: 16),
+    ); // let the screen paint it
+  }
+
   late UserStore users;
 
   // ---- optional AI assistant ----
@@ -153,10 +168,15 @@ class AppState extends ChangeNotifier {
       if (kIsWeb) {
         users = UserStore.open('');
         catalogSource = 'bundled';
+        await _stage('Downloading the catalog…');
         final bytes = await rootBundle.load('catalog.db');
+        await _stage(
+          'Opening ${(bytes.lengthInBytes / 1e6).round()} MB of titles…',
+        );
         final opened = await CatalogStore.openBytes(
           bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes),
         );
+        await _stage('Getting your picks ready…');
         _attach(opened);
         _loadControls();
         try {
@@ -190,7 +210,9 @@ class AppState extends ChangeNotifier {
       } else {
         catalogSource = 'bundled';
       }
+      await _stage('Opening your catalog…');
       opened ??= await _openBundled();
+      await _stage('Getting your picks ready…');
       _attach(opened);
       _loadControls();
       ready = true;
@@ -229,7 +251,7 @@ class AppState extends ChangeNotifier {
     store = s;
     data = s.data;
     recommender = Recommender(data);
-    search = TitleSearch(data);
+    _search = null;
     importHints.clear();
     _reloadEntries();
   }

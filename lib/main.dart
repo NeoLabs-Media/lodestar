@@ -64,18 +64,7 @@ class _HomeState extends State<Home> {
       );
     }
     if (!app.ready) {
-      return const Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Loading Lodestar…'),
-            ],
-          ),
-        ),
-      );
+      return _LoadingScreen(stage: app.loadStage);
     }
     if (!_askedPending && app.pendingCrSeries != null) {
       _askedPending = true;
@@ -205,4 +194,56 @@ class _MarkPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter old) => false;
+}
+
+/// Branded start-up screen: the star, a thin progress line and what is happening right now.
+class _LoadingScreen extends StatelessWidget {
+  final String stage;
+  const _LoadingScreen({required this.stage});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0, end: 1),
+          duration: const Duration(milliseconds: 500),
+          builder: (_, t, child) => Opacity(opacity: t, child: child),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                '✦',
+                style: TextStyle(fontSize: 44, color: Atlas.accent),
+              ),
+              const SizedBox(height: 10),
+              Text('Lodestar', style: Atlas.serif(size: 30)),
+              const SizedBox(height: 22),
+              const SizedBox(
+                width: 180,
+                child: LinearProgressIndicator(
+                  minHeight: 2,
+                  color: Atlas.accent,
+                  backgroundColor: Atlas.hair,
+                ),
+              ),
+              const SizedBox(height: 14),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 250),
+                child: Text(
+                  stage,
+                  key: ValueKey(stage),
+                  style: const TextStyle(
+                    color: Atlas.muted,
+                    fontSize: 13,
+                    letterSpacing: .3,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
