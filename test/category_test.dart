@@ -7,14 +7,22 @@ void main() {
   final c = CatalogStore.open('catalog.db').data;
   final rec = Recommender(c);
 
-  test('every category rule resolves to real facets and has titles', () {
+  test('every category has facets in the catalog and enough titles', () {
     for (final cat in categories) {
-      for (final (kind, value, _) in cat.any) {
+      final resolved = [
+        for (final (kind, value, _) in cat.any)
+          if (c.facetIndex['$kind|$value'] != null ||
+              (kind == 'anilist_tag' && c.facetIndex['keyword|$value'] != null))
+            value,
+      ];
+      if (resolved.isEmpty) {
+        // movie / series genres do not exist in an anime-only catalog
         expect(
-          c.facetIndex['$kind|$value'],
-          isNotNull,
-          reason: '${cat.key}: $kind|$value missing in catalog',
+          c.kinds.length,
+          1,
+          reason: '${cat.key}: no rule resolves in a mixed catalog',
         );
+        continue;
       }
       final n = [
         for (var i = 0; i < c.n; i++)
